@@ -2,16 +2,19 @@ import pygame
 import settings
 import sprites
 import map_generator
+from settings import camera, WIDTH, HEIGHT
 # Инициализация
 pygame.init()
 screen = pygame.display.set_mode((settings.WIDTH, settings.HEIGHT))
-pygame.display.set_caption("Название твоей игры")
+pygame.display.set_caption("оттл")
+
 
 # Группы спрайтов
 all_sprites = pygame.sprite.Group()
 walls_group = pygame.sprite.Group()
 
-game_map, spawn_x, spawn_y = map_generator.create_map(16, 12)
+
+game_map, spawn_x, spawn_y = map_generator.create_map(40, 30)
 # Создаем игрока через модуль sprites 👾
 player = sprites.Player(spawn_x, spawn_y)
 all_sprites.add(player)
@@ -29,17 +32,27 @@ clock = pygame.time.Clock()
 running = True
 
 while running:
+    # 1. ЛОГИКА
     clock.tick(settings.FPS)
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-    # Обновление
+    # Обновляем камеру и игрока
+    camera.update(player, WIDTH, HEIGHT)
     player.update(walls_group)
 
-    # Отрисовка
-    screen.fill(settings.BLACK)
-    all_sprites.draw(screen)
+    # 2. ОТРИСОВКА
+    screen.fill(settings.BLACK)  # Или settings.WHITE, смотря какой фон хочешь
+
+    # Рисуем стены через камеру
+    for wall in walls_group:
+        screen.blit(wall.image, camera.apply(wall.rect))
+
+    # Рисуем игрока через камеру
+    screen.blit(player.image, camera.apply(player.rect))
+
+    # Выводим всё на экран
     pygame.display.flip()
 
 pygame.quit()
