@@ -4,7 +4,7 @@ WIDTH = 800
 HEIGHT = 600
 
 FPS = 60
-TILE_SIZE = 64
+TILE_SIZE = 60
 
 # Цвета
 WHITE = (255, 255, 255)
@@ -14,4 +14,6 @@ GREEN = (0, 200, 0)
 # Настройки игрока
 PLAYER_SPEED = 5
 
-camera = Camera(60 * 64, 40 * 64)
+MAP_COLS = 80
+MAP_ROWS = 60
+camera = Camera(MAP_COLS * TILE_SIZE, MAP_ROWS * TILE_SIZE)

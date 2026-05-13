@@ -2,83 +2,76 @@ import random
 
 
 def create_corridor(game_map, x1, y1, x2, y2):
-    thickness = 2 # Ширина коридора
-    # Горизонтальный проход
-    for x in range(min(x1, x2), max(x1, x2) + 1):
-        for t in range(thickness):
-            if y1 + t < len(game_map):
-                game_map[y1 + t][x] = 0
-    # Вертикальный проход
-    for y in range(min(y1, y2), max(y1, y2) + 1):
-        for t in range(thickness):
-            if x2 + t < len(game_map[0]):
-                game_map[y][x2 + t] = 0
+
+    thickness = 4
+
+    if random.random() > 0.5:
+        # Горизонтально -> Вертикально
+        for x in range(min(x1, x2), max(x1, x2) + 1):
+            for t in range(thickness):
+                ty = y1 + t - thickness // 2  # Центрируем ширину относительно линии
+                if 0 <= ty < len(game_map):
+                    game_map[ty][x] = 0
+
+        for y in range(min(y1, y2), max(y1, y2) + 1):
+            for t in range(thickness):
+                tx = x2 + t - thickness // 2
+                if 0 <= tx < len(game_map[0]):
+                    game_map[y][tx] = 0
+    else:
+        # Вертикально -> Горизонтально
+        for y in range(min(y1, y2), max(y1, y2) + 1):
+            for t in range(thickness):
+                tx = x1 + t - thickness // 2
+                if 0 <= tx < len(game_map[0]):
+                    game_map[y][tx] = 0
+
+        for x in range(min(x1, x2), max(x1, x2) + 1):
+            for t in range(thickness):
+                ty = y2 + t - thickness // 2
+                if 0 <= ty < len(game_map):
+                    game_map[ty][x] = 0
 
 
-import random
+def create_map(cols, rows, max_rooms=12):
 
-
-def create_map(cols, rows, max_rooms=15):
     game_map = [[1 for _ in range(cols)] for _ in range(rows)]
     rooms = []
-    padding = 2
 
-    # Пробуем создать max_rooms комнат
-    for i in range(max_rooms * 5):
-        if len(rooms) >= max_rooms:
-            break
+    # Делим карту на сетку (например, 4 колонки и 3 строки = 12 ячеек)
+    grid_cols = 4
+    grid_rows = 3
+    cell_w = cols // grid_cols
+    cell_h = rows // grid_rows
 
-        # 1. ПЕРВАЯ КОМНАТА: ставим строго в центр
-        if len(rooms) == 0:
-            w, h = 5, 5  # Маленькая стартовая комната
-            x = cols // 2 - w // 2
-            y = rows // 2 - h // 2
-        else:
-            # ОСТАЛЬНЫЕ КОМНАТЫ: случайный размер и позиция
-            w = random.randint(6, 12)
-            h = random.randint(6, 12)
+    for i in range(max_rooms):
+        # Вычисляем текущую ячейку сетки
+        grid_x = i % grid_cols
+        grid_y = i // grid_cols
 
-            # Защита от вылета (убедимся, что диапазон положительный)
-            max_x = cols - w - padding
-            max_y = rows - h - padding
-            if max_x <= padding or max_y <= padding:
-                continue
+        # Размеры комнаты (не больше размера ячейки!)
+        w = random.randint(12, 12)
+        h = random.randint(12, 12)
 
-            x = random.randint(padding, max_x)
-            y = random.randint(padding, max_y)
+        # Центрируем комнату внутри ячейки сетки
+        # Это создает ту самую "ровную" структуру
+        x = grid_x * cell_w + (cell_w - w) // 2
+        y = grid_y * cell_h + (cell_h - h) // 2
 
-        # 2. Проверка на пересечение
-        new_room = {'x1': x, 'y1': y, 'x2': x + w, 'y2': y + h}
-        check_rect = {
-            'x1': x - padding, 'y1': y - padding,
-            'x2': x + w + padding, 'y2': y + h + padding
-        }
-
-        intersects = False
-        for other in rooms:
-            if (check_rect['x1'] <= other['x2'] and check_rect['x2'] >= other['x1'] and
-                    check_rect['y1'] <= other['y2'] and check_rect['y2'] >= other['y1']):
-                intersects = True
-                break
-
-        if not intersects:
-            # Рисуем пол
-            for r in range(y, y + h):
-                for c in range(x, x + w):
+        # Рисуем пол комнаты
+        for r in range(y, y + h):
+            for c in range(x, x + w):
+                if 0 <= r < rows and 0 <= c < cols:
                     game_map[r][c] = 0
 
-            cx, cy = x + w // 2, y + h // 2
+        cx, cy = x + w // 2, y + h // 2
 
-            # 3. Соединяем коридором
-            if len(rooms) > 0:
-                prev_room = rooms[-1]
-                create_corridor(game_map, prev_room['cx'], prev_room['cy'], cx, cy)
+        # Соединяем с предыдущей комнатой
+        if len(rooms) > 0:
+            prev_room = rooms[-1]
+            create_corridor(game_map, prev_room['cx'], prev_room['cy'], cx, cy)
 
-            rooms.append({
-                'x1': x, 'y1': y, 'x2': x + w, 'y2': y + h,
-                'cx': cx, 'cy': cy
-            })
+        rooms.append({'cx': cx, 'cy': cy})
 
-    # Игрок появляется в центре первой комнаты (которая теперь в центре карты)
-    spawn_x, spawn_y = rooms[0]['cx'], rooms[0]['cy']
-    return game_map, spawn_x, spawn_y
+    # Возвращаем карту и центр самой первой комнаты для спавна игрока
+    return game_map, rooms[0]['cx'], rooms[0]['cy']

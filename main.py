@@ -14,7 +14,7 @@ all_sprites = pygame.sprite.Group()
 walls_group = pygame.sprite.Group()
 
 
-game_map, spawn_x, spawn_y = map_generator.create_map(40, 30)
+game_map, spawn_x, spawn_y = map_generator.create_map(settings.MAP_COLS, settings.MAP_ROWS)
 # Создаем игрока через модуль sprites 👾
 player = sprites.Player(spawn_x, spawn_y)
 all_sprites.add(player)
