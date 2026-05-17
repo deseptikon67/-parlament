@@ -138,7 +138,7 @@ while running:
                 game_state = "dead"
                 death_menu.active = True
 
-        if player.hp <= 0 and game_state == "playing":
+        if player.is_dead and pygame.time.get_ticks() - player.death_time > 1333:
             game_state = "dead"
             death_menu.active = True
 
