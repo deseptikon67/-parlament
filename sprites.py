@@ -1,5 +1,6 @@
 import pygame
 import settings
+from modifiers import BuffManager
 
 try:
     _SCAN_A = pygame.KSCAN_A
@@ -83,9 +84,11 @@ class Player(pygame.sprite.Sprite):
         self.invincible = False
         self.invincible_timer = 0
         self.invincible_duration = 1000
-        self.shoot_cooldown = 300
         self.last_shot = 0
         self.bullet_damage = 20
+        self.base_speed = settings.PLAYER_SPEED
+        self.base_shoot_cooldown = 300
+        self.buff_manager = BuffManager()
 
     # --- МЕТОД АНИМАЦИИ ---
     def animate(self):
@@ -134,7 +137,8 @@ class Player(pygame.sprite.Sprite):
         # Если уже мертв или бессмертен, урон не проходит
         if self.invincible or self.is_dead:
             return False
-            
+
+        amount = int(amount * self.buff_manager.get_multiplier("damage_taken"))
         self.hp = max(0, self.hp - amount)
         
         # Если ХП упало до 0 — персонаж умирает
@@ -152,7 +156,8 @@ class Player(pygame.sprite.Sprite):
         from enemies import PlayerBullet
 
         now = pygame.time.get_ticks()
-        if now - self.last_shot < self.shoot_cooldown:
+        cooldown = int(self.base_shoot_cooldown * self.buff_manager.get_multiplier("shoot_cooldown"))
+        if now - self.last_shot < cooldown:
             return
         if keys[pygame.K_RIGHT]: dx, dy = 1, 0
         elif keys[pygame.K_LEFT]: dx, dy = -1, 0
@@ -188,6 +193,8 @@ class Player(pygame.sprite.Sprite):
             move_down = keys[pygame.K_s]
 
         self.is_moving = move_left or move_right or move_up or move_down
+
+        self.speed = int(self.base_speed * self.buff_manager.get_multiplier("move_speed"))
 
         if move_left and move_up: self.facing = "left_up"
         elif move_left and move_down: self.facing = "left_down"

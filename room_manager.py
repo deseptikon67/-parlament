@@ -65,21 +65,30 @@ class Room:
 
     def check_cleared(self):
         if not self.activated or self.cleared:
-            return
+            return False
         if all(not e.alive() for e in self.room_enemies):
             self.cleared = True
             for w in self.corridor_walls:
                 w.kill()
             self.corridor_walls.clear()
+            return True
+        return False
 
 
 class RoomManager:
     def __init__(self, rooms_data, tile_size):
         self.rooms = [Room(r, tile_size) for r in rooms_data[1:]]
+        self.card_event_pending = False
+        self.room_just_cleared = False
 
     def update(self, player, enemies_group, all_sprites, walls_group, doors_group):
+        self.room_just_cleared = False
         for room in self.rooms:
             if not room.activated and room.is_player_near_room_center(player.rect):
                 room.activate(enemies_group, all_sprites, walls_group, doors_group)
             if room.activated and not room.cleared:
-                room.check_cleared()
+                if room.check_cleared():
+                    self.room_just_cleared = True
+                    has_uncleared = any(not r.cleared for r in self.rooms)
+                    if has_uncleared:
+                        self.card_event_pending = True
