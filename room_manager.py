@@ -7,6 +7,7 @@ from enemies import BurstRangedEnemy, MeleeEnemy, RangedEnemy
 
 
 class Room:
+
     def __init__(self, room_data, tile_size):
         self.tile_size = tile_size
         self.cx = room_data["cx"]
@@ -18,13 +19,14 @@ class Room:
             room_data["h"] * tile_size,
         )
         self.door_tiles = list(room_data.get("door_tiles") or [])
+        self.is_spawn = room_data.get("is_spawn", False)
+        self.is_exit = room_data.get("is_exit", False)
         self.cleared = False
         self.activated = False
         self.room_enemies = []
         self.corridor_walls = []
 
     def is_player_near_room_center(self, player_rect):
-        """Активация примерно от центра комнаты: пересечение с центральной половиной площади."""
         zw = max(self.tile_size, int(self.pixel_rect.width * 0.5))
         zh = max(self.tile_size, int(self.pixel_rect.height * 0.5))
         zone = pygame.Rect(0, 0, zw, zh)
@@ -40,19 +42,28 @@ class Room:
         return RangedEnemy(px, py)
 
     def activate(self, enemies_group, all_sprites, walls_group, doors_group):
-        if self.activated:
+        # Если комната спавна или выхода — врагов и дверей не будет!
+        if self.activated or self.is_spawn or self.is_exit:
             return
         self.activated = True
+
         ts = self.tile_size
         margin = 2 * ts
         count = random.randint(1, 4)
         for _ in range(count):
-            px = random.randint(self.pixel_rect.left + margin, self.pixel_rect.right - margin - ts)
-            py = random.randint(self.pixel_rect.top + margin, self.pixel_rect.bottom - margin - ts)
+            px = random.randint(
+                self.pixel_rect.left + margin,
+                self.pixel_rect.right - margin - ts,
+            )
+            py = random.randint(
+                self.pixel_rect.top + margin,
+                self.pixel_rect.bottom - margin - ts,
+            )
             e = self._pick_enemy(px, py)
             enemies_group.add(e)
             all_sprites.add(e)
             self.room_enemies.append(e)
+
         seen = set()
         for c, r in self.door_tiles:
             if (c, r) in seen:
@@ -74,12 +85,38 @@ class Room:
 
 
 class RoomManager:
+
     def __init__(self, rooms_data, tile_size):
-        self.rooms = [Room(r, tile_size) for r in rooms_data[1:]]
+        # Теперь храним вообще все комнаты, но разделяем их логически
+        self.all_rooms = [Room(r, tile_size) for r in rooms_data]
+
+        # Боевые комнаты (исключая спавн и выход)
+        self.combat_rooms = [
+            r for r in self.all_rooms if not r.is_spawn and not r.is_exit
+        ]
+
+        # Находим комнату выхода
+        self.exit_room = next((r for r in self.all_rooms if r.is_exit), None)
 
     def update(self, player, enemies_group, all_sprites, walls_group, doors_group):
-        for room in self.rooms:
-            if not room.activated and room.is_player_near_room_center(player.rect):
-                room.activate(enemies_group, all_sprites, walls_group, doors_group)
+        # Обновляем только боевые комнаты
+        for room in self.combat_rooms:
+            if not room.activated and room.is_player_near_room_center(
+                player.rect
+            ):
+                room.activate(
+                    enemies_group, all_sprites, walls_group, doors_group
+                )
             if room.activated and not room.cleared:
                 room.check_cleared()
+
+    def is_floor_complete(self, player_rect):
+        """Возвращает True, если ВСЕ боевые комнаты зачищены И игрок дошел до
+
+        комнаты выхода.
+        """
+        all_combat_cleared = all(room.cleared for room in self.combat_rooms)
+        if all_combat_cleared and self.exit_room:
+            # Проверяем, наступил ли игрок в зону комнаты выхода
+            return self.exit_room.pixel_rect.colliderect(player_rect)
+        return False

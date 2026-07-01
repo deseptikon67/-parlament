@@ -13,7 +13,7 @@ class Player(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
 
-        self.visual_size = int(settings.TILE_SIZE * 1.8) 
+        self.visual_size = int(settings.TILE_SIZE * 2.5)
         
         def cut_strip(filename):
             frames_count = 8 

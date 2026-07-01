@@ -19,9 +19,32 @@ hud = HUD()
 pause_menu = PauseMenu()
 death_menu = DeathMenu()
 
+floor_font = pygame.font.SysFont("Arial", 28, bold=True)
+current_floor = 1
 
-def init_game():
-    game_map, spawn_x, spawn_y, rooms_data = map_generator.create_map(settings.MAP_COLS, settings.MAP_ROWS)
+
+# --- НОВЫЙ КЛАСС ДЛЯ АНАЛОГА ЛИФТА / ЛЮКА ---
+class Elevator(pygame.sprite.Sprite):
+
+    def __init__(self, x, y, size):
+        super().__init__()
+        self.image = pygame.Surface((size, size))
+        self.image.fill((100, 100, 100))  # Серый цвет платформы
+        # Рисуем темную рамку и внутренний квадрат для визуала лифта
+        pygame.draw.rect(self.image, (50, 50, 50), (0, 0, size, size), 4)
+        pygame.draw.rect(
+            self.image,
+            (75, 75, 75),
+            (size // 4, size // 4, size // 2, size // 2),
+            2,
+        )
+        self.rect = self.image.get_rect(center=(x, y))
+
+
+def init_game(existing_player=None):
+    game_map, spawn_x, spawn_y, rooms_data = map_generator.create_map(
+        settings.MAP_COLS, settings.MAP_ROWS
+    )
 
     all_sprites = pygame.sprite.Group()
     walls_group = pygame.sprite.Group()
@@ -29,14 +52,43 @@ def init_game():
     player_bullets = pygame.sprite.Group()
     enemy_bullets = pygame.sprite.Group()
     doors_group = pygame.sprite.Group()
+    exit_group = pygame.sprite.Group()  # Группа для нашего лифта
 
-    player = sprites.Player(spawn_x, spawn_y)
+    if existing_player is not None:
+        player = existing_player
+        player.rect.x = spawn_x * settings.TILE_SIZE
+        player.rect.y = spawn_y * settings.TILE_SIZE
+        if hasattr(player, "x"):
+            player.x = player.rect.x
+        if hasattr(player, "y"):
+            player.y = player.rect.y
+    else:
+        player = sprites.Player(spawn_x, spawn_y)
+
     all_sprites.add(player)
+
+    # Спавним лифт в центре финальной комнаты
+    exit_room_data = next((r for r in rooms_data if r.get("is_exit")), None)
+    if exit_room_data:
+        # Переводим координаты центра комнаты из тайлов в пиксели
+        pixel_cx = (
+            exit_room_data["cx"] * settings.TILE_SIZE
+            + settings.TILE_SIZE // 2
+        )
+        pixel_cy = (
+            exit_room_data["cy"] * settings.TILE_SIZE
+            + settings.TILE_SIZE // 2
+        )
+        # Создаем лифт размером 2х2 тайла
+        elevator = Elevator(pixel_cx, pixel_cy, settings.TILE_SIZE * 2)
+        exit_group.add(elevator)
 
     for r in range(len(game_map)):
         for c in range(len(game_map[r])):
             if game_map[r][c] == 1:
-                wall = sprites.Wall(c * settings.TILE_SIZE, r * settings.TILE_SIZE)
+                wall = sprites.Wall(
+                    c * settings.TILE_SIZE, r * settings.TILE_SIZE
+                )
                 all_sprites.add(wall)
                 walls_group.add(wall)
 
@@ -51,9 +103,11 @@ def init_game():
         enemy_bullets,
         doors_group,
         room_manager,
+        exit_group,  # Возвращаем группу лифта
     )
 
 
+# Первый запуск
 (
     player,
     all_sprites,
@@ -63,6 +117,7 @@ def init_game():
     enemy_bullets,
     doors_group,
     room_manager,
+    exit_group,
 ) = init_game()
 
 game_state = "playing"
@@ -95,6 +150,7 @@ while running:
             elif game_state == "dead":
                 result = death_menu.handle_click(event.pos)
                 if result == "restart":
+                    current_floor = 1
                     (
                         player,
                         all_sprites,
@@ -104,6 +160,7 @@ while running:
                         enemy_bullets,
                         doors_group,
                         room_manager,
+                        exit_group,
                     ) = init_game()
                     game_state = "playing"
                     death_menu.active = False
@@ -124,7 +181,32 @@ while running:
         player_bullets.update(walls_group)
         enemy_bullets.update(walls_group)
 
-        room_manager.update(player, enemies, all_sprites, walls_group, doors_group)
+        room_manager.update(
+            player, enemies, all_sprites, walls_group, doors_group
+        )
+
+        # --- ИЗМЕНЕННАЯ ЛОГИКА ПЕРЕХОДА НА СЛЕДУЮЩИЙ ЭТАЖ ---
+        # Проверяем, зачищены ли все боевые комнаты
+        all_combat_cleared = all(
+            room.cleared for room in room_manager.combat_rooms
+        )
+
+        # Переходим, только если врагов нет И игрок физически наступил на лифт
+        if all_combat_cleared and pygame.sprite.spritecollide(
+            player, exit_group, False
+        ):
+            current_floor += 1
+            (
+                player,
+                all_sprites,
+                walls_group,
+                enemies,
+                player_bullets,
+                enemy_bullets,
+                doors_group,
+                room_manager,
+                exit_group,
+            ) = init_game(existing_player=player)
 
         hits = pygame.sprite.groupcollide(player_bullets, enemies, True, False)
         for bullet, hit_list in hits.items():
@@ -142,13 +224,19 @@ while running:
             game_state = "dead"
             death_menu.active = True
 
+    # --- РЕНДЕР ---
     screen.fill(settings.BLACK)
 
+    # Сначала рисуем пол/стены и лифт, чтобы персонаж и враги ходили ПОВЕРХ них
     for wall in walls_group:
         screen.blit(wall.image, camera.apply(wall.rect))
 
     for door in doors_group:
         screen.blit(door.image, camera.apply(door.rect))
+
+    # Отрисовка лифта
+    for ev in exit_group:
+        screen.blit(ev.image, camera.apply(ev.rect))
 
     for enemy in enemies:
         screen.blit(enemy.image, camera.apply(enemy.rect))
@@ -162,6 +250,11 @@ while running:
     screen.blit(player.image, camera.apply(player.rect))
 
     hud.draw_player_hp(screen, player)
+
+    floor_text = floor_font.render(
+        f"Этаж: {current_floor}", True, (255, 215, 0)
+    )
+    screen.blit(floor_text, (20, 60))
 
     if game_state == "paused":
         pause_menu.draw(screen)
