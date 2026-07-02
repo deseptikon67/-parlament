@@ -54,11 +54,7 @@ class HUD:
 
         y += font_size + 4
 
-        surface.blit(font.render(
-            f"Уровень: {player.level} | {player.exp}/{player.exp_to_next_level}",
-            True,
-            (0, 255, 0)
-        ), (margin, y))
+        
 
 
 class PauseMenu:

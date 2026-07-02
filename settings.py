@@ -1,7 +1,7 @@
 from Camera import Camera
 
-WIDTH = 1920
-HEIGHT = 1080
+WIDTH = 1500
+HEIGHT = 800
 
 FPS = 60
 TILE_SIZE = 60

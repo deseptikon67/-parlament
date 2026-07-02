@@ -6,7 +6,7 @@ import map_generator
 import settings
 import sprites
 from enemies import EnemyBullet, MeleeEnemy, PlayerBullet, RangedEnemy
-from hud import HUD, PauseMenu, DeathMenu, MiniMap
+from hud import HUD, PauseMenu, DeathMenu
 from loot import LootManager
 from room_manager import RoomManager
 camera = settings.camera
@@ -20,7 +20,6 @@ clock = pygame.time.Clock()
 hud = HUD()
 pause_menu = PauseMenu()
 death_menu = DeathMenu()
-minimap = MiniMap()
 
 floor_font = pygame.font.SysFont("Arial", 28, bold=True)
 current_floor = 1
