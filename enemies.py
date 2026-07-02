@@ -323,7 +323,7 @@ class MeleeEnemy(Enemy):
         self.animate()
         
         self.rect.centerx = self.hitbox.centerx
-        self.rect.bottom = self.hitbox.bottom + 85
+        self.rect.bottom = self.hitbox.bottom + 72
 
 class RangedEnemy(Enemy):
     def __init__(self, x, y):
@@ -454,7 +454,7 @@ class RangedEnemy(Enemy):
         self.animate()
         
         self.rect.centerx = self.hitbox.centerx
-        self.rect.bottom = self.hitbox.bottom + 85 
+        self.rect.bottom = self.hitbox.bottom + 72 
 
 class TriangleRangedEnemy(Enemy):
     def __init__(self, x, y):
@@ -595,7 +595,7 @@ class TriangleRangedEnemy(Enemy):
         self.animate()
         
         self.rect.centerx = self.hitbox.centerx
-        self.rect.bottom = self.hitbox.bottom + 85
+        self.rect.bottom = self.hitbox.bottom + 72
 
 
 class BurstRangedEnemy(Enemy):
@@ -742,4 +742,4 @@ class BurstRangedEnemy(Enemy):
         self.animate()
         
         self.rect.centerx = self.hitbox.centerx
-        self.rect.bottom = self.hitbox.bottom + 85
+        self.rect.bottom = self.hitbox.bottom + 72

@@ -83,12 +83,13 @@ class Room:
 
             seen.add((c, r))
 
-            wall = sprites.Wall(c * ts, r * ts)
+            door_wall = sprites.Wall(c * ts, r * ts, size=ts)
 
-            walls_group.add(wall)
-            all_sprites.add(wall)
+            doors_group.add(door_wall)
+            walls_group.add(door_wall)
+            all_sprites.add(door_wall)
 
-            self.corridor_walls.append(wall)
+            self.corridor_walls.append(door_wall)
 
     # ---------------- FIX HERE ----------------
     def check_cleared(self, loot_manager=None):

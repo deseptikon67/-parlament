@@ -177,7 +177,9 @@ def init_game(existing_player=None):
             floor_background.blit(temp_floor.image, (c * settings.TILE_SIZE, r * settings.TILE_SIZE))
             if game_map[r][c] == 1:
                 wall = sprites.Wall(
-                    c * settings.TILE_SIZE, r * settings.TILE_SIZE, size=settings.TILE_SIZE
+                    c * settings.TILE_SIZE,
+                    r * settings.TILE_SIZE,
+                    size=settings.TILE_SIZE,
                 )
                 all_sprites.add(wall)
                 walls_group.add(wall)
@@ -502,8 +504,6 @@ while running:
     # 3. Объекты уровня поверх пола
     for wall in walls_group:
         screen.blit(wall.image, camera.apply(wall.rect))
-    for door in doors_group:
-        screen.blit(door.image, camera.apply(door.rect))
     for ev in exit_group:
         screen.blit(ev.image, camera.apply(ev.rect))
 
