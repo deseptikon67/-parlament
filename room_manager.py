@@ -99,13 +99,12 @@ class RoomManager:
         self.room_just_cleared = False
         self.card_event_pending = False
 
-    def update(self, player, enemies_group, all_sprites, walls_group, doors_group):
+    def update(self, player, enemies, all_sprites, walls_group, doors_group, loot_manager):
         self.room_just_cleared = False
 
         for room in self.combat_rooms:
             if not room.activated and room.is_player_near_room_center(player.rect):
-                room.activate(enemies_group, all_sprites, walls_group, doors_group)
-
+                room.activate(enemies, all_sprites, walls_group, doors_group)
             if room.activated and not room.cleared:
                 if room.check_cleared():
                     # Как только комната зачищена - выдаем карты!

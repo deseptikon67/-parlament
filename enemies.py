@@ -199,7 +199,7 @@ class Enemy(pygame.sprite.Sprite):
 class MeleeEnemy(Enemy):
     def __init__(self, x, y):
         super().__init__(x, y, 60, 3.5, 15)
-        self.agro_radius = 250
+        self.agro_radius = 700
         self.attack_range = 50
         self.attack_cooldown = 1000
 
@@ -324,7 +324,7 @@ class MeleeEnemy(Enemy):
 class RangedEnemy(Enemy):
     def __init__(self, x, y):
         super().__init__(x, y, 40, 1.5, 10)
-        self.agro_radius = 350
+        self.agro_radius = 700
         self.preferred_dist = 200
         self.shoot_cooldown = 1500
 
@@ -453,7 +453,7 @@ class RangedEnemy(Enemy):
 class BurstRangedEnemy(Enemy):
     def __init__(self, x, y):
         super().__init__(x, y, 45, 1.3, 8)
-        self.agro_radius = 340
+        self.agro_radius = 700
         self.preferred_dist = 190
         self.burst_cooldown = 2600
         self.burst_interval_ms = 95

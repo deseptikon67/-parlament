@@ -30,6 +30,7 @@ class CardSelectUI:
 
     def load_cards(self):
         """Загружает картинки из assets/cards/"""
+        print("ТЕКУЩИЙ АБСОЛЮТНЫЙ ПУТЬ ЗАПУСКА:", os.path.abspath(os.getcwd()))
         card_ids = [
             "ace_spades", "king_hearts", "queen_diamonds", "jack_clubs",
             "va_bank", "double_stake", "bluff", "all_in",
