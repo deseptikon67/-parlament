@@ -3,10 +3,14 @@ import pygame
 
 class Merchant:
     def __init__(self, x, y):
-        self.image = pygame.Surface((40, 60))
-        self.image.fill((200, 150, 50))
+        self.bag_image = pygame.image.load("assets/bag.png").convert_alpha()
+        self.bag_image = pygame.transform.scale(self.bag_image, (400, 400))
+        self.image = pygame.image.load("assets/lekar.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (60, 90))
 
         self.rect = self.image.get_rect(center=(x, y))
+
+        
 
         # зона активации
         self.zone = pygame.Rect(0, 0, 160, 120)
@@ -23,11 +27,15 @@ class Merchant:
         self.active = self.zone.colliderect(player.rect)
 
     def draw(self, surface, camera):
-        surface.blit(self.image, camera.apply(self.rect))
+        
+        bag_rect = self.bag_image.get_rect()
+        bag_rect.center = (self.rect.centerx + 70, self.rect.centery -30)
 
+        surface.blit(self.bag_image, camera.apply(bag_rect))
+        surface.blit(self.image, camera.apply(self.rect))
         if not self.active:
             return
-
+        
         w, h = surface.get_size()
 
         # окно магазина по центру
@@ -48,8 +56,7 @@ class Merchant:
         surface.blit(self.font.render("Вылечиться (10)", True, (0,0,0)),
                      (self.btn_heal.x + 10, self.btn_heal.y + 10))
 
-        surface.blit(self.font.render("Карточка (50)", True, (0,0,0)),
-                     (self.btn_card.x + 10, self.btn_card.y + 10))
+        
 
     def handle_click(self, player, pos):
         if not self.active:
@@ -61,9 +68,6 @@ class Merchant:
                 player.hp = player.max_hp
             return "heal"
 
-        if self.btn_card.collidepoint(pos):
-            if player.gold >= 50:
-                player.gold -= 50
-                return "card"
+       
 
         return None

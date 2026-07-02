@@ -22,20 +22,17 @@ from score import ScoreDisplay
 camera = settings.camera
 
 pygame.init()
-<<<<<<< HEAD
 
 pygame.mixer.music.load("assets/theme.mp3")
 pygame.mixer.music.set_volume(0.5)
 pygame.mixer.music.play(-1)
 death_sound = pygame.mixer.Sound("assets/lose.mp3")
 death_sound.set_volume(0.8)
-=======
 try:
     pygame.mixer.init(frequency=22050, size=-16, channels=1)
 except pygame.error:
     pass
 
->>>>>>> 94777333b652ec8eb1afab15b6fe405036da81a0
 screen = pygame.display.set_mode((settings.WIDTH, settings.HEIGHT))
 pygame.display.set_caption("рогалик")
 clock = pygame.time.Clock()
@@ -111,8 +108,8 @@ def spawn_merchant(room_manager):
     if room_manager.all_rooms:
         first_room = room_manager.all_rooms[0]
         return Merchant(
-            first_room.pixel_rect.centerx,
-            first_room.pixel_rect.top + 60
+            first_room.pixel_rect.centerx + 170,
+            first_room.pixel_rect.top + 200
         )
     return None
 
@@ -421,13 +418,12 @@ while running:
                     final_score_saved = score_manager.score
                     score_manager.add_to_top(final_score_saved)
 
-                    pygame.mixer.music.stop()
-                    pygame.mixer.music.rewind()
+                    
 
-                    death_sound.play()
+                
                     pygame.event.pump()
 
-                    game_state = "dead"
+                    
                     death_menu.active = True
 
         hits = pygame.sprite.spritecollide(player, enemy_bullets, True)
