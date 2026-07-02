@@ -1,12 +1,10 @@
 import sys
-import array
-import math
 import pygame
 import map_generator
 import settings
 import sprites
 from enemies import EnemyBullet, MeleeEnemy, PlayerBullet, RangedEnemy
-from hud import HUD, PauseMenu, DeathMenu, StartMenu, FinishMenu
+from hud import HUD, PauseMenu, DeathMenu
 from loot import LootManager
 from room_manager import RoomManager
 from merchant import Merchant
@@ -22,11 +20,12 @@ from score import ScoreDisplay
 camera = settings.camera
 
 pygame.init()
-try:
-    pygame.mixer.init(frequency=22050, size=-16, channels=1)
-except pygame.error:
-    pass
 
+pygame.mixer.music.load("assets/theme.mp3")
+pygame.mixer.music.set_volume(0.5)
+pygame.mixer.music.play(-1)
+death_sound = pygame.mixer.Sound("assets/lose.mp3")
+death_sound.set_volume(0.8)
 screen = pygame.display.set_mode((settings.WIDTH, settings.HEIGHT))
 pygame.display.set_caption("рогалик")
 clock = pygame.time.Clock()
@@ -34,24 +33,6 @@ clock = pygame.time.Clock()
 hud = HUD()
 pause_menu = PauseMenu()
 death_menu = DeathMenu()
-start_menu = StartMenu()
-
-
-def make_sound(freq, duration=0.12, volume=0.3, sample_rate=22050):
-    length = int(sample_rate * duration)
-    samples = array.array('h', [
-        int(32767 * volume * math.sin(2 * math.pi * freq * i / sample_rate) * (1.0 - i / length))
-        for i in range(length)
-    ])
-    return pygame.mixer.Sound(buffer=samples)
-
-shoot_sound = None
-if pygame.mixer.get_init():
-    try:
-        shoot_sound = make_sound(880, duration=0.08, volume=0.35)
-    except Exception:
-        shoot_sound = None
-finish_menu = FinishMenu()
 
 # В качестве run_timer и score_manager используем внутренние объекты из ScoreDisplay,
 # так как они идеально подходят по методам под твой новый hud.py
@@ -139,13 +120,7 @@ def init_game(existing_player=None):
     else:
         player = sprites.Player(spawn_x, spawn_y)
 
-    if shoot_sound is not None:
-        player.shoot_sound = shoot_sound
-
     all_sprites.add(player)
-
-    if shoot_sound is not None:
-        player.shoot_sound = shoot_sound
 
     exit_room_data = next((r for r in rooms_data if isinstance(r, dict) and r.get("is_exit")), None)
 
@@ -251,7 +226,7 @@ def apply_card_stat(player_obj, card_stat_name, multiplier, revert=False):
 ) = init_game()
 
 merchant = spawn_merchant(room_manager)
-game_state = "start"
+game_state = "playing"
 running = True
 final_score_saved = 0  # Хранилище итогового счета для экрана смерти
 
@@ -267,9 +242,12 @@ while running:
                 if game_state == "playing":
                     game_state = "paused"
                     pause_menu.active = True
+                    pygame.mixer.music.pause()
+
                 elif game_state == "paused":
                     game_state = "playing"
                     pause_menu.active = False
+                    pygame.mixer.music.unpause()
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if game_state == "card_select":
@@ -301,37 +279,6 @@ while running:
                 elif result == "quit":
                     running = False
 
-            elif game_state == "start":
-                result = start_menu.handle_click(event.pos)
-                if result == "start":
-                    score_display.reset()
-                    current_floor = 1
-                    (
-                        player,
-                        all_sprites,
-                        walls_group,
-                        enemies,
-                        player_bullets,
-                        enemy_bullets,
-                        doors_group,
-                        room_manager,
-                        exit_group,
-                        loot_manager,
-                    ) = init_game()
-                    if hasattr(player, "gold"):
-                        player.gold = 0
-                    if shoot_sound is not None:
-                        player.shoot_sound = shoot_sound
-                    merchant = spawn_merchant(room_manager)
-                    game_state = "playing"
-                elif result == "quit":
-                    running = False
-
-            elif game_state == "finished":
-                result = finish_menu.handle_click(event.pos)
-                if result == "quit":
-                    running = False
-
             elif game_state == "dead":
                 result = death_menu.handle_click(event.pos)
                 if result == "restart":
@@ -349,14 +296,14 @@ while running:
                         exit_group,
                         loot_manager,
                     ) = init_game()
+                    pygame.mixer.music.play(-1)
                     if hasattr(player, "gold"):
                         player.gold = 0
-                    if shoot_sound is not None:
-                        player.shoot_sound = shoot_sound
 
                     merchant = spawn_merchant(room_manager)
                     game_state = "playing"
                     death_menu.active = False
+                    
                 elif result == "quit":
                     running = False
 
@@ -380,9 +327,6 @@ while running:
             player, enemies, all_sprites, walls_group, doors_group, loot_manager
         )
 
-        if room_manager.room_just_cleared:
-            score_display.add_room_clear_points()
-
         if room_manager.card_event_pending:
             drawn_cards = card_deck.draw(3)
             card_ui.set_cards(drawn_cards)
@@ -404,21 +348,44 @@ while running:
             for e in hit_list:
                 died = e.take_damage(bullet.damage)
                 if died:
-                    loot_manager.spawn_exp(e)
-                    score_display.add_kill_points()
+                    final_score_saved = score_manager.score
+                    score_manager.add_to_top(final_score_saved)
+
+                    pygame.mixer.music.stop()
+                    pygame.mixer.music.rewind()
+
+                    death_sound.play()
+                    pygame.event.pump()
+
+                    game_state = "dead"
+                    death_menu.active = True
 
         hits = pygame.sprite.spritecollide(player, enemy_bullets, True)
         for b in hits:
             died = player.take_damage(b.damage)
             if died:
                 final_score_saved = score_manager.score
-                score_manager.add_to_top(final_score_saved)  # Сохраняем результат в топ
+                score_manager.add_to_top(final_score_saved)
+
+                pygame.mixer.music.stop()
+                pygame.mixer.music.rewind()
+
+                death_sound.play()
+                pygame.event.pump()
+
                 game_state = "dead"
                 death_menu.active = True
 
         if player.is_dead and pygame.time.get_ticks() - player.death_time > 1333:
             final_score_saved = score_manager.score
-            score_manager.add_to_top(final_score_saved)  # Сохраняем результат в топ
+            score_manager.add_to_top(final_score_saved)
+
+            pygame.mixer.music.stop()
+            pygame.mixer.music.rewind()
+
+            death_sound.play()
+            pygame.event.pump()
+
             game_state = "dead"
             death_menu.active = True
 
@@ -431,37 +398,24 @@ while running:
         if all_combat_cleared and pygame.sprite.spritecollide(
                 player, exit_group, False
         ):
-                    if current_floor >= settings.MAX_FLOORS:
-                        final_score_saved = score_manager.score
-                        score_manager.add_to_top(final_score_saved)
-                        game_state = "finished"
-                    else:
-                        current_floor += 1
-                        (
-                            player,
-                            all_sprites,
-                            walls_group,
-                            enemies,
-                            player_bullets,
-                            enemy_bullets,
-                            doors_group,
-                            room_manager,
-                            exit_group,
-                            loot_manager,
-                        ) = init_game(existing_player=player)
-                        if shoot_sound is not None:
-                            player.shoot_sound = shoot_sound
-                        merchant = spawn_merchant(room_manager)
+            current_floor += 1
+            score_display.add_room_clear_points()
+            (
+                player,
+                all_sprites,
+                walls_group,
+                enemies,
+                player_bullets,
+                enemy_bullets,
+                doors_group,
+                room_manager,
+                exit_group,
+                loot_manager,
+            ) = init_game(existing_player=player)
+            merchant = spawn_merchant(room_manager)
 
-    if game_state == "start":
-        start_menu.draw(screen)
-        pygame.display.flip()
-        continue
-
-    if game_state == "finished":
-        finish_menu.draw(screen, final_score=final_score_saved)
-        pygame.display.flip()
-        continue
+    if game_state == "card_select":
+        card_ui.handle_hover(pygame.mouse.get_pos())
 
     screen.fill(settings.BLACK)
 
