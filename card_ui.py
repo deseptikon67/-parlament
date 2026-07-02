@@ -10,7 +10,6 @@ CARD_BG = (30, 20, 50)
 CARD_HOVER = (50, 40, 80)
 
 def fit_font(text: str, max_width: int, base_size: int, font_name=None, bold=False, min_size=12):
-    """Подбирает максимальный размер шрифта, при котором text влезает в max_width."""
     size = base_size
     while size > min_size:
         font = pygame.font.SysFont(font_name, size, bold=bold)
@@ -26,23 +25,20 @@ class CardSelectUI:
         self.hovered_index: int | None = None
         self.font_title = pygame.font.SysFont(None, 48)
         
-        # --- ЗАГРУЗКА ОТДЕЛЬНЫХ КАРТИНОК ---
         self.card_sprites = {}
         self.load_cards()
 
     def load_cards(self):
-        """Загружает отдельные картинки карт из папки assets/cards/"""
+        """Загружает картинки из assets/cards/"""
         card_ids = [
             "ace_spades", "king_hearts", "queen_diamonds", "jack_clubs",
             "va_bank", "double_stake", "bluff", "all_in",
             "lucky_seven", "house_edge", "hot_streak", "cold_read"
         ]
         
-        # Целевой размер карты
         card_size = (160, 240)
 
         for cid in card_ids:
-            # Ищем PNG или JPG
             path_png = os.path.join("assets", "cards", f"{cid}.png")
             path_jpg = os.path.join("assets", "cards", f"{cid}.jpg")
             
@@ -96,23 +92,24 @@ class CardSelectUI:
         overlay.fill((0, 0, 0, 200))
         surface.blit(overlay, (0, 0))
 
-        # Твой старый заголовок из скрина
         title = self.font_title.render("ВЫБЕРИТЕ УЛУЧШЕНИЕ", True, GOLD)
         surface.blit(title, title.get_rect(center=(settings.WIDTH // 2, 60)))
 
         for i, (card, rect) in enumerate(zip(self.cards, self.card_rects)):
             hovered = i == self.hovered_index
             
-            # --- ВАРИАНТ 1: ЕСЛИ КАРТИНКА НАЙДЕНА В ПАПКЕ ---
+            # Если картинка успешно загрузилась из папки
             if card.id in self.card_sprites:
                 surface.blit(self.card_sprites[card.id], rect.topleft)
                 if hovered:
                     pygame.draw.rect(surface, GOLD, rect, 4, border_radius=8)
                     
-            # --- ВАРИАНТ 2: ЕСЛИ КАРТИНКИ НЕТ (Рисуем текстом как на скрине) ---
+            # Резервный вариант, если картинки нет (Рисуем плотный фон и текст)
             else:
                 bg = CARD_HOVER if hovered else CARD_BG
                 border = 4 if hovered else 2
+                
+                # Рисуем плотный непрозрачный фон
                 pygame.draw.rect(surface, bg, rect, border_radius=10)
                 pygame.draw.rect(surface, GOLD, rect, border, border_radius=10)
 

@@ -233,7 +233,8 @@ while running:
             room.cleared for room in room_manager.combat_rooms
         )
 
-        if all_combat_cleared and pygame.sprite.spritecollide(player, exit_group, False):
+        # ИСПРАВЛЕНИЕ: Теперь лифт реагирует только на точный хитбокс ног
+        if all_combat_cleared and pygame.sprite.spritecollide(player, exit_group, False, collided=lambda p, e: p.hitbox.colliderect(e.rect)):
             current_floor += 1
             (
                 player,
@@ -263,7 +264,13 @@ while running:
             for e in hit_list:
                 e.take_damage(damage)
 
-        hits = pygame.sprite.spritecollide(player, enemy_bullets, True)
+        # ИСПРАВЛЕНИЕ: Вражеские пули дамажат только если попадают в точный хитбокс
+        hits = pygame.sprite.spritecollide(
+            player, 
+            enemy_bullets, 
+            True, 
+            collided=lambda p, b: p.hitbox.colliderect(b.rect)
+        )
         for b in hits:
             died = player.take_damage(b.damage)
             if died:
@@ -279,14 +286,10 @@ while running:
     if game_state == "card_select":
         card_ui.handle_hover(pygame.mouse.get_pos())
 
-    # ==========================================
-    # ИДЕАЛЬНЫЙ ПОРЯДОК ОТРИСОВКИ (РЕНДЕР)
-    # ==========================================
-    
-    # 1. Очищаем экран (Заливаем черным)
+
     screen.fill(settings.BLACK)
 
-    # 2. Рисуем пол, стены, двери и лифты
+
     for wall in walls_group:
         screen.blit(wall.image, camera.apply(wall.rect))
     for door in doors_group:
@@ -317,7 +320,7 @@ while running:
         pause_menu.draw(screen)
     if game_state == "dead":
         death_menu.draw(screen)
-
+    
     # 6. Обновляем экран
     pygame.display.flip()
 
