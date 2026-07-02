@@ -20,6 +20,12 @@ from score import ScoreDisplay
 camera = settings.camera
 
 pygame.init()
+
+pygame.mixer.music.load("assets/theme.mp3")
+pygame.mixer.music.set_volume(0.5)
+pygame.mixer.music.play(-1)
+death_sound = pygame.mixer.Sound("assets/lose.mp3")
+death_sound.set_volume(0.8)
 screen = pygame.display.set_mode((settings.WIDTH, settings.HEIGHT))
 pygame.display.set_caption("рогалик")
 clock = pygame.time.Clock()
@@ -236,9 +242,12 @@ while running:
                 if game_state == "playing":
                     game_state = "paused"
                     pause_menu.active = True
+                    pygame.mixer.music.pause()
+
                 elif game_state == "paused":
                     game_state = "playing"
                     pause_menu.active = False
+                    pygame.mixer.music.unpause()
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if game_state == "card_select":
@@ -287,12 +296,14 @@ while running:
                         exit_group,
                         loot_manager,
                     ) = init_game()
+                    pygame.mixer.music.play(-1)
                     if hasattr(player, "gold"):
                         player.gold = 0
 
                     merchant = spawn_merchant(room_manager)
                     game_state = "playing"
                     death_menu.active = False
+                    
                 elif result == "quit":
                     running = False
 
@@ -337,21 +348,44 @@ while running:
             for e in hit_list:
                 died = e.take_damage(bullet.damage)
                 if died:
-                    loot_manager.spawn_exp(e)
-                    score_display.add_kill_points()
+                    final_score_saved = score_manager.score
+                    score_manager.add_to_top(final_score_saved)
+
+                    pygame.mixer.music.stop()
+                    pygame.mixer.music.rewind()
+
+                    death_sound.play()
+                    pygame.event.pump()
+
+                    game_state = "dead"
+                    death_menu.active = True
 
         hits = pygame.sprite.spritecollide(player, enemy_bullets, True)
         for b in hits:
             died = player.take_damage(b.damage)
             if died:
                 final_score_saved = score_manager.score
-                score_manager.add_to_top(final_score_saved)  # Сохраняем результат в топ
+                score_manager.add_to_top(final_score_saved)
+
+                pygame.mixer.music.stop()
+                pygame.mixer.music.rewind()
+
+                death_sound.play()
+                pygame.event.pump()
+
                 game_state = "dead"
                 death_menu.active = True
 
         if player.is_dead and pygame.time.get_ticks() - player.death_time > 1333:
             final_score_saved = score_manager.score
-            score_manager.add_to_top(final_score_saved)  # Сохраняем результат в топ
+            score_manager.add_to_top(final_score_saved)
+
+            pygame.mixer.music.stop()
+            pygame.mixer.music.rewind()
+
+            death_sound.play()
+            pygame.event.pump()
+
             game_state = "dead"
             death_menu.active = True
 

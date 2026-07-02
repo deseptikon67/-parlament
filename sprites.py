@@ -111,26 +111,7 @@ class Player(pygame.sprite.Sprite):
         self.base_damage_multiplier = 1.0
         self.damage_multiplier = 1.0
 
-    def add_exp(self, amount):
 
-            self.exp += amount
-
-            while self.exp >= self.exp_to_next_level:
-                self.exp -= self.exp_to_next_level
-
-                self.level += 1
-
-                # следующий уровень требует на 1 exp больше
-                self.exp_to_next_level += 1
-
-                # +5% максимального здоровья
-                self.max_hp = int(self.max_hp * 1.05)
-                self.hp = self.max_hp
-
-                # +1% урона
-                self.damage_multiplier *= 1.01
-
-                print(f"LEVEL UP! Уровень: {self.level}")
 
     # --- МЕТОД АНИМАЦИИ ---
     def animate(self):
@@ -268,11 +249,23 @@ class Player(pygame.sprite.Sprite):
 
         self.animate()
 
+
+
 class Wall(pygame.sprite.Sprite):
-    def __init__(self, x, y):
+
+    _textures = {}  # кэш по размерам
+
+    def __init__(self, x, y, size=128):
         super().__init__()
-        self.image = pygame.Surface((settings.TILE_SIZE, settings.TILE_SIZE))
-        self.image.fill(settings.WHITE)
-        self.rect = self.image.get_rect()
-        self.rect.x = x
-        self.rect.y = y
+
+        # если такого размера ещё нет — создаём
+        if size not in Wall._textures:
+            img = pygame.image.load("assets/wall.jpg").convert_alpha()
+
+            Wall._textures[size] = pygame.transform.smoothscale(
+                img,
+                (size, size)
+            )
+
+        self.image = Wall._textures[size]
+        self.rect = self.image.get_rect(topleft=(x, y))
