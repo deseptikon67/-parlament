@@ -7,6 +7,7 @@ import settings
 import sprites
 from enemies import EnemyBullet, MeleeEnemy, PlayerBullet, RangedEnemy
 from hud import DeathMenu, HUD, PauseMenu
+from loot import LootManager
 from room_manager import RoomManager
 from settings import HEIGHT, WIDTH, camera
 
@@ -53,6 +54,9 @@ def init_game(existing_player=None):
     enemy_bullets = pygame.sprite.Group()
     doors_group = pygame.sprite.Group()
     exit_group = pygame.sprite.Group()  # Группа для нашего лифта
+    
+    # --- ИНИЦИАЛИЗАЦИЯ ЛУТ-МЕНЕДЖЕРА ---
+    loot_manager = LootManager()
 
     if existing_player is not None:
         player = existing_player
@@ -103,7 +107,8 @@ def init_game(existing_player=None):
         enemy_bullets,
         doors_group,
         room_manager,
-        exit_group,  # Возвращаем группу лифта
+        exit_group,
+        loot_manager,  # ВОЗВРАЩАЕМ ЛУТ-МЕНЕДЖЕР
     )
 
 
@@ -118,6 +123,7 @@ def init_game(existing_player=None):
     doors_group,
     room_manager,
     exit_group,
+    loot_manager,
 ) = init_game()
 
 game_state = "playing"
@@ -161,6 +167,7 @@ while running:
                         doors_group,
                         room_manager,
                         exit_group,
+                        loot_manager,
                     ) = init_game()
                     game_state = "playing"
                     death_menu.active = False
@@ -182,8 +189,39 @@ while running:
         enemy_bullets.update(walls_group)
 
         room_manager.update(
-            player, enemies, all_sprites, walls_group, doors_group
+            player, enemies, all_sprites, walls_group, doors_group, loot_manager
         )
+
+        # --- ОБНОВЛЕНИЕ ЛУТА ---
+        # Магнит лута (притягивание к игроку)
+        loot_manager.update_magnet(player)
+        
+        # Сбор монет
+        collected_coins = loot_manager.update(player)
+        player.gold += collected_coins
+        
+        # Сбор опыта (только когда комнаты зачищены)
+        loot_manager.collect_exp(player, room_manager)
+        
+        # Спавн опыта при убийстве врага
+        hits = pygame.sprite.groupcollide(player_bullets, enemies, True, False)
+        for bullet, hit_list in hits.items():
+            for e in hit_list:
+                died = e.take_damage(bullet.damage)
+                if died:
+                    # Спавним опыт при смерти врага
+                    loot_manager.spawn_exp(e)
+
+        hits = pygame.sprite.spritecollide(player, enemy_bullets, True)
+        for b in hits:
+            died = player.take_damage(b.damage)
+            if died:
+                game_state = "dead"
+                death_menu.active = True
+
+        if player.is_dead and pygame.time.get_ticks() - player.death_time > 1333:
+            game_state = "dead"
+            death_menu.active = True
 
         # --- ИЗМЕНЕННАЯ ЛОГИКА ПЕРЕХОДА НА СЛЕДУЮЩИЙ ЭТАЖ ---
         # Проверяем, зачищены ли все боевые комнаты
@@ -206,23 +244,8 @@ while running:
                 doors_group,
                 room_manager,
                 exit_group,
+                loot_manager,
             ) = init_game(existing_player=player)
-
-        hits = pygame.sprite.groupcollide(player_bullets, enemies, True, False)
-        for bullet, hit_list in hits.items():
-            for e in hit_list:
-                e.take_damage(bullet.damage)
-
-        hits = pygame.sprite.spritecollide(player, enemy_bullets, True)
-        for b in hits:
-            died = player.take_damage(b.damage)
-            if died:
-                game_state = "dead"
-                death_menu.active = True
-
-        if player.is_dead and pygame.time.get_ticks() - player.death_time > 1333:
-            game_state = "dead"
-            death_menu.active = True
 
     # --- РЕНДЕР ---
     screen.fill(settings.BLACK)
@@ -237,6 +260,9 @@ while running:
     # Отрисовка лифта
     for ev in exit_group:
         screen.blit(ev.image, camera.apply(ev.rect))
+
+    # --- ОТРИСОВКА ЛУТА ---
+    loot_manager.draw(screen, camera)
 
     for enemy in enemies:
         screen.blit(enemy.image, camera.apply(enemy.rect))
@@ -255,6 +281,16 @@ while running:
         f"Этаж: {current_floor}", True, (255, 215, 0)
     )
     screen.blit(floor_text, (20, 60))
+    
+    # --- ПОКАЗЫВАЕМ ЗОЛОТО И ОПЫТ ---
+    gold_text = floor_font.render(f"Золото: {player.gold}", True, (255, 215, 0))
+    screen.blit(gold_text, (20, 100))
+    
+    exp_text = floor_font.render(
+        f"Уровень: {player.level} | Опыт: {player.exp}/{player.exp_to_next_level}", 
+        True, (0, 255, 0)
+    )
+    screen.blit(exp_text, (20, 140))
 
     if game_state == "paused":
         pause_menu.draw(screen)
