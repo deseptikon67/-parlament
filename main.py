@@ -13,6 +13,9 @@ from merchant import Merchant
 from card_ui import CardSelectUI
 from cards import CardDeck
 
+# --- ИМПОРТ СИСТЕМЫ ОЧКОВ ---
+from score import ScoreDisplay
+
 camera = settings.camera
 
 pygame.init()
@@ -21,6 +24,7 @@ pygame.display.set_caption("рогалик")
 clock = pygame.time.Clock()
 
 hud = HUD()
+score_display = ScoreDisplay()  # Инициализация счетчиков времени и очков
 pause_menu = PauseMenu()
 death_menu = DeathMenu()
 
@@ -260,6 +264,7 @@ while running:
                 result = death_menu.handle_click(event.pos)
                 if result == "restart":
                     current_floor = 1
+                    score_display.reset()  # Сброс таймера и очков при рестарте
                     (
                         player,
                         all_sprites,
@@ -313,6 +318,8 @@ while running:
         collected_coins = loot_manager.update(player)
         if hasattr(player, "gold"):
             player.gold += collected_coins
+            if collected_coins > 0:
+                score_display.add_coin_points(collected_coins)  # Очки за монеты
 
         loot_manager.collect_exp(player, room_manager)
 
@@ -322,6 +329,7 @@ while running:
                 died = e.take_damage(bullet.damage)
                 if died:
                     loot_manager.spawn_exp(e)
+                    score_display.add_kill_points()  # Очки за убийство врага
 
         hits = pygame.sprite.spritecollide(player, enemy_bullets, True)
         for b in hits:
@@ -344,6 +352,7 @@ while running:
                 player, exit_group, False
         ):
             current_floor += 1
+            score_display.add_room_clear_points()  # Очки за зачистку этажа / переход в лифт
             (
                 player,
                 all_sprites,
@@ -386,7 +395,8 @@ while running:
     if merchant:
         merchant.draw(screen, camera)
 
-    hud.draw(screen, player, current_floor)
+    # Передаем score_display в метод отрисовки HUD
+    hud.draw(screen, player, current_floor, score_display=score_display)
 
     if game_state == "card_select":
         card_ui.draw(screen)
