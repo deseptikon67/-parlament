@@ -9,7 +9,7 @@ class Merchant:
         self.image = pygame.image.load("assets/lekar.png").convert_alpha()
         self.image = pygame.transform.scale(self.image, (60, 90))
 
-        # 🧾 окно магазина (КАРТИНКА)
+        # окно магазина (КАРТИНКА)
         self.shop_image = pygame.image.load("assets/shop.png").convert_alpha()
 
         self.rect = self.image.get_rect(center=(x, y))
@@ -23,7 +23,7 @@ class Merchant:
         # кнопка (ИСПОЛЬЗУЕТСЯ ДЛЯ КЛИКА)
         self.btn_heal = pygame.Rect(0, 0, 0, 0)
 
-        # ❌ сообщение об ошибке
+        # сообщение об ошибке
         self.error_text = ""
         self.error_time = 0
 
@@ -51,19 +51,17 @@ class Merchant:
         panel.center = (w // 2, h // 2)
 
         surface.blit(self.shop_image, panel.topleft)
-
-        # ============================
-        # 🔥 КНОПКА ДЛЯ НАСТРОЙКИ (DEBUG)
-        # ============================
+        # КНОПКА ДЛЯ НАСТРОЙКИ (DEBUG)
+    
 
         self.btn_heal.width = int(panel.width * 0.5)
         self.btn_heal.height = 160
         self.btn_heal.centerx = panel.centerx
         self.btn_heal.top = panel.top + int(panel.height * 0.5)
 
-        # ----------------------------
-        # 🟢 ВИЗУАЛ КНОПКИ (ЗАКОММЕНЧЕНО)
-        # ----------------------------
+        
+        # ВИЗУАЛ КНОПКИ (ЗАКОММЕНЧЕНО)
+        
 
         """
         pygame.draw.rect(
@@ -79,7 +77,7 @@ class Merchant:
         surface.blit(text, text_rect)
         """
 
-        # ❌ сообщение об ошибке
+        # сообщение об ошибке
         if self.error_text:
             if pygame.time.get_ticks() - self.error_time < 2000:
                 font = pygame.font.SysFont("Arial", 28, bold=True)
@@ -101,7 +99,7 @@ class Merchant:
                 player.hp = player.max_hp
                 return "heal"
             else:
-                # ❌ недостаточно золота
+                #недостаточно золота
                 self.error_text = "Недостаточно золота"
                 self.error_time = pygame.time.get_ticks()
 

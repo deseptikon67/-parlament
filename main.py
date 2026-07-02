@@ -11,12 +11,11 @@ from loot import LootManager
 from room_manager import RoomManager
 from merchant import Merchant
 
-# --- НОВЫЙ ИМПОРТ ИЗ ВЕТКИ НАПАРНИКА ---
+# --- ИМПОРТ ИЗ ВЕТКИ НАПАРНИКА ---
 from card_ui import CardSelectUI
 from cards import CardDeck
 
-# --- ИМПОРТ ОБНОВЛЕННОЙ СИСТЕМЫ СЧЕТА И ТАЙМЕРА ---
-# (Код адаптирован под новые параметры hud.py: score_manager и run_timer)
+# --- ИМПОРТ СИСТЕМЫ СЧЕТА И ТАЙМЕРА ---
 from score import ScoreDisplay
 
 camera = settings.camera
@@ -33,7 +32,11 @@ try:
 except pygame.error:
     pass
 
-screen = pygame.display.set_mode((settings.WIDTH, settings.HEIGHT))
+# Флаги FULLSCREEN и SCALED сделают игру полноэкранной и аккуратно растянут её
+screen = pygame.display.set_mode(
+    (settings.WIDTH, settings.HEIGHT), 
+    pygame.FULLSCREEN | pygame.SCALED
+)
 pygame.display.set_caption("рогалик")
 clock = pygame.time.Clock()
 
@@ -59,14 +62,11 @@ if pygame.mixer.get_init():
         shoot_sound = None
 finish_menu = FinishMenu()
 
-# В качестве run_timer и score_manager используем внутренние объекты из ScoreDisplay,
-# так как они идеально подходят по методам под твой новый hud.py
 score_display = ScoreDisplay()
-score_manager = score_display.score_system  # содержит .score и .get_top3() / .add_to_top()
-run_timer = score_display.score_system      # содержит .get_formatted_time()
+score_manager = score_display.score_system  
+run_timer = score_display.score_system      
 
-# Добавим заглушку метода get_top3, если его не было в score.py, 
-# чтобы избежать падений и динамически сохранять рекорды в сессии
+# Динамическая заглушка для рекордов, если их нет в score.py
 if not hasattr(score_manager, 'top3_scores'):
     score_manager.top3_scores = []
 
@@ -83,7 +83,7 @@ if not hasattr(score_manager, 'add_to_top'):
 
 # --- ИНИЦИАЛИЗАЦИЯ СИСТЕМЫ КАРТОЧЕК ---
 card_ui = CardSelectUI()
-card_deck = CardDeck()  # Колода карт
+card_deck = CardDeck()  
 
 floor_font = pygame.font.SysFont("Arial", 28, bold=True)
 current_floor = 1
@@ -150,9 +150,6 @@ def init_game(existing_player=None):
 
     all_sprites.add(player)
 
-    if shoot_sound is not None:
-        player.shoot_sound = shoot_sound
-
     exit_room_data = next((r for r in rooms_data if isinstance(r, dict) and r.get("is_exit")), None)
 
     if exit_room_data and "cx" in exit_room_data and "cy" in exit_room_data:
@@ -168,11 +165,19 @@ def init_game(existing_player=None):
     elevator = Elevator(pixel_cx, pixel_cy, settings.TILE_SIZE * 2)
     exit_group.add(elevator)
 
+    # --- ОПТИМИЗАЦИЯ ПОЛА (БЕЗ ГОСТИНГА) ---
+    map_width = len(game_map[0]) * settings.TILE_SIZE
+    map_height = len(game_map) * settings.TILE_SIZE
+    floor_background = pygame.Surface((map_width, map_height))
+
+    temp_floor = sprites.Floor(0, 0, size=settings.TILE_SIZE)
+
     for r in range(len(game_map)):
         for c in range(len(game_map[r])):
+            floor_background.blit(temp_floor.image, (c * settings.TILE_SIZE, r * settings.TILE_SIZE))
             if game_map[r][c] == 1:
                 wall = sprites.Wall(
-                    c * settings.TILE_SIZE, r * settings.TILE_SIZE
+                    c * settings.TILE_SIZE, r * settings.TILE_SIZE, size=settings.TILE_SIZE
                 )
                 all_sprites.add(wall)
                 walls_group.add(wall)
@@ -205,7 +210,7 @@ def init_game(existing_player=None):
 
     return (
         player,
-        all_sprites,
+        floor_background,
         walls_group,
         enemies,
         player_bullets,
@@ -245,7 +250,7 @@ def apply_card_stat(player_obj, card_stat_name, multiplier, revert=False):
 
 (
     player,
-    all_sprites,
+    floor_background,
     walls_group,
     enemies,
     player_bullets,
@@ -259,7 +264,7 @@ def apply_card_stat(player_obj, card_stat_name, multiplier, revert=False):
 merchant = spawn_merchant(room_manager)
 game_state = "start"
 running = True
-final_score_saved = 0  # Хранилище итогового счета для экрана смерти
+final_score_saved = 0  
 
 while running:
     clock.tick(settings.FPS)
@@ -317,7 +322,7 @@ while running:
                     current_floor = 1
                     (
                         player,
-                        all_sprites,
+                        floor_background,
                         walls_group,
                         enemies,
                         player_bullets,
@@ -345,10 +350,10 @@ while running:
                 result = death_menu.handle_click(event.pos)
                 if result == "restart":
                     current_floor = 1
-                    score_display.reset()  # Полный сброс текущих очков и времени
+                    score_display.reset()  
                     (
                         player,
-                        all_sprites,
+                        floor_background,
                         walls_group,
                         enemies,
                         player_bullets,
@@ -387,8 +392,9 @@ while running:
         player_bullets.update(walls_group)
         enemy_bullets.update(walls_group)
 
+        # Передаем пустую группу вместо удаленной all_sprites, чтобы не ломать room_manager
         room_manager.update(
-            player, enemies, all_sprites, walls_group, doors_group, loot_manager
+            player, enemies, pygame.sprite.Group(), walls_group, doors_group, loot_manager
         )
 
         if room_manager.room_just_cleared:
@@ -414,17 +420,6 @@ while running:
         for bullet, hit_list in hits.items():
             for e in hit_list:
                 died = e.take_damage(bullet.damage)
-                if died:
-                    final_score_saved = score_manager.score
-                    score_manager.add_to_top(final_score_saved)
-
-                    
-
-                
-                    pygame.event.pump()
-
-                    
-                    death_menu.active = True
 
         hits = pygame.sprite.spritecollide(player, enemy_bullets, True)
         for b in hits:
@@ -464,28 +459,29 @@ while running:
         if all_combat_cleared and pygame.sprite.spritecollide(
                 player, exit_group, False
         ):
-                    if current_floor >= settings.MAX_FLOORS:
-                        final_score_saved = score_manager.score
-                        score_manager.add_to_top(final_score_saved)
-                        game_state = "finished"
-                    else:
-                        current_floor += 1
-                        (
-                            player,
-                            all_sprites,
-                            walls_group,
-                            enemies,
-                            player_bullets,
-                            enemy_bullets,
-                            doors_group,
-                            room_manager,
-                            exit_group,
-                            loot_manager,
-                        ) = init_game(existing_player=player)
-                        if shoot_sound is not None:
-                            player.shoot_sound = shoot_sound
-                        merchant = spawn_merchant(room_manager)
+            if current_floor >= settings.MAX_FLOORS:
+                final_score_saved = score_manager.score
+                score_manager.add_to_top(final_score_saved)
+                game_state = "finished"
+            else:
+                current_floor += 1
+                (
+                    player,
+                    floor_background,
+                    walls_group,
+                    enemies,
+                    player_bullets,
+                    enemy_bullets,
+                    doors_group,
+                    room_manager,
+                    exit_group,
+                    loot_manager,
+                ) = init_game(existing_player=player)
+                if shoot_sound is not None:
+                    player.shoot_sound = shoot_sound
+                merchant = spawn_merchant(room_manager)
 
+    # --- РЕНДЕРИНГ И ЭКРАНЫ ---
     if game_state == "start":
         start_menu.draw(screen)
         pygame.display.flip()
@@ -496,8 +492,14 @@ while running:
         pygame.display.flip()
         continue
 
-    screen.fill(settings.BLACK)
+    # 1. Очистка экрана
+    screen.fill((20, 20, 20)) 
 
+    # 2. Рендеринг пола (Один большой запеченный холст сдвигается камерой)
+    floor_rect = floor_background.get_rect()
+    screen.blit(floor_background, camera.apply(floor_rect))
+
+    # 3. Объекты уровня поверх пола
     for wall in walls_group:
         screen.blit(wall.image, camera.apply(wall.rect))
     for door in doors_group:
@@ -507,6 +509,7 @@ while running:
 
     loot_manager.draw(screen, camera)
 
+    # 4. Существа и снаряды
     for enemy in enemies:
         screen.blit(enemy.image, camera.apply(enemy.rect))
         enemy.draw_health_bar(screen, camera)
@@ -521,7 +524,7 @@ while running:
     if merchant:
         merchant.draw(screen, camera)
 
-    # Отрисовка HUD с обновленными параметрами
+    # 5. UI меню и HUD поверх игрового мира
     hud.draw(screen, player, current_floor, score_manager=score_manager, run_timer=run_timer)
 
     if game_state == "card_select":
@@ -531,7 +534,6 @@ while running:
         pause_menu.draw(screen)
         
     if game_state == "dead":
-        # Отрисовка экрана смерти с передачей итогового счета и менеджера рекордов
         death_menu.draw(screen, final_score=final_score_saved, score_manager=score_manager)
 
     pygame.display.flip()

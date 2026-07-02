@@ -275,3 +275,20 @@ class Wall(pygame.sprite.Sprite):
 
         self.image = Wall._textures[size]
         self.rect = self.image.get_rect(topleft=(x, y))
+class Floor(pygame.sprite.Sprite):
+
+    _textures = {}
+
+    def __init__(self, x, y, size=128):
+        super().__init__()
+
+        if size not in Floor._textures:
+            img = pygame.image.load("assets/floor.jpg").convert()
+
+            Floor._textures[size] = pygame.transform.smoothscale(
+                img,
+                (size, size)
+            )
+
+        self.image = Floor._textures[size]
+        self.rect = self.image.get_rect(topleft=(x, y))

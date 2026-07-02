@@ -16,5 +16,5 @@ PLAYER_SPEED = 5
 
 MAP_COLS = 80
 MAP_ROWS = 60
-MAX_FLOORS = 3  # Количество этажей до финального экрана
+
 camera = Camera(MAP_COLS * TILE_SIZE, MAP_ROWS * TILE_SIZE)
