@@ -1,5 +1,6 @@
 import pygame
 import settings
+from modifiers import BuffManager
 
 try:
     _SCAN_A = pygame.KSCAN_A
@@ -54,7 +55,6 @@ class Player(pygame.sprite.Sprite):
         self.walk_right_up = cut_strip("assets/walk_right_up.png")
 
         # --- ЗАГРУЖАЕМ АНИМАЦИИ СМЕРТИ (DEATH) ---
-        # Проверь названия файлов в папке assets!
         self.death_down = cut_strip("assets/death_down.png")
         self.death_up = cut_strip("assets/death_up.png")
         self.death_left_down = cut_strip("assets/death_left_down.png")
@@ -71,10 +71,18 @@ class Player(pygame.sprite.Sprite):
         
         # --- ФИЗИКА И СОСТОЯНИЕ ---
         self.rect = self.image.get_rect()
-        self.hitbox = pygame.Rect(0, 0, settings.TILE_SIZE - 10, settings.TILE_SIZE - 10)
-        self.hitbox.x = x * settings.TILE_SIZE
-        self.hitbox.y = y * settings.TILE_SIZE
-        
+        self.hitbox = pygame.Rect(0, 0, settings.TILE_SIZE - 20, settings.TILE_SIZE - 20)
+
+# центрируем хитбокс в тайле
+        self.hitbox.center = (
+            x * settings.TILE_SIZE + settings.TILE_SIZE // 2,
+            y * settings.TILE_SIZE + settings.TILE_SIZE // 2
+        )
+
+# 🔥 поднимаем хитбокс вверх (регулируй число)
+        HITBOX_Y_OFFSET = -20
+        self.hitbox.y += HITBOX_Y_OFFSET
+                
         self.speed = settings.PLAYER_SPEED
         self.facing = "down"
         self.is_moving = False  
@@ -86,9 +94,11 @@ class Player(pygame.sprite.Sprite):
         self.invincible = False
         self.invincible_timer = 0
         self.invincible_duration = 1000
-        self.shoot_cooldown = 300
         self.last_shot = 0
         self.bullet_damage = 20
+        self.base_speed = settings.PLAYER_SPEED
+        self.base_shoot_cooldown = 300
+        self.buff_manager = BuffManager()
 
         self.exp = 0
         self.level = 1
@@ -126,9 +136,7 @@ class Player(pygame.sprite.Sprite):
     def animate(self):
         prev_anim = self.anim_list
 
-        # 1. ВЫБИРАЕМ СПИСОК АНИМАЦИИ В ЗАВИСИМОСТИ ОТ СОСТОЯНИЯ
         if self.is_dead:
-            # Если мертв, ставим анимацию смерти
             if self.facing == "down": self.anim_list = self.death_down
             elif self.facing == "up": self.anim_list = self.death_up
             elif self.facing == "left_down": self.anim_list = self.death_left_down
@@ -136,7 +144,6 @@ class Player(pygame.sprite.Sprite):
             elif self.facing == "right_down": self.anim_list = self.death_right_down
             elif self.facing == "right_up": self.anim_list = self.death_right_up
         else:
-            # Если жив, выбираем между ходьбой и простоем
             if self.facing == "down": self.anim_list = self.walk_down if self.is_moving else self.idle_down
             elif self.facing == "up": self.anim_list = self.walk_up if self.is_moving else self.idle_up
             elif self.facing == "left_down": self.anim_list = self.walk_left_down if self.is_moving else self.idle_left_down
@@ -147,18 +154,14 @@ class Player(pygame.sprite.Sprite):
         if prev_anim != self.anim_list:
             self.frame_index = 0
 
-        # 2. ПЕРЕЛИСТЫВАЕМ КАДРЫ
         now = pygame.time.get_ticks()
         if now - self.anim_timer > self.anim_speed:
             self.anim_timer = now
             
             if self.is_dead:
-                # ЕСЛИ МЕРТВ: останавливаемся на последнем кадре
                 if self.frame_index < len(self.anim_list) - 1:
                     self.frame_index += 1
-                
             else:
-                # ЕСЛИ ЖИВ: крутим анимацию по кругу
                 self.frame_index += 1
                 if self.frame_index >= len(self.anim_list):
                     self.frame_index = 0
@@ -166,13 +169,12 @@ class Player(pygame.sprite.Sprite):
         self.image = self.anim_list[self.frame_index]
 
     def take_damage(self, amount):
-        # Если уже мертв или бессмертен, урон не проходит
         if self.invincible or self.is_dead:
             return False
-            
+
+        amount = int(amount * self.buff_manager.get_multiplier("damage_taken"))
         self.hp = max(0, self.hp - amount)
         
-        # Если ХП упало до 0 — персонаж умирает
         if self.hp == 0:
             self.is_dead = True
             self.frame_index = 0
@@ -187,7 +189,8 @@ class Player(pygame.sprite.Sprite):
         from enemies import PlayerBullet
 
         now = pygame.time.get_ticks()
-        if now - self.last_shot < self.shoot_cooldown:
+        cooldown = int(self.base_shoot_cooldown * self.buff_manager.get_multiplier("shoot_cooldown"))
+        if now - self.last_shot < cooldown:
             return
         if keys[pygame.K_RIGHT]: dx, dy = 1, 0
         elif keys[pygame.K_LEFT]: dx, dy = -1, 0
@@ -200,14 +203,10 @@ class Player(pygame.sprite.Sprite):
         self.last_shot = now
 
     def update(self, walls, bullet_group):
-        # ==========================================
-        # ЕСЛИ МЕРТВ - ТОЛЬКО ЛЕЖИМ (Выходим из update)
-        # ==========================================
         if self.is_dead:
             self.animate()
-            return  # Слово return обрывает функцию. Двигаться и стрелять он не сможет.
+            return
 
-        # Дальше идет обычный код для живого игрока
         keys = pygame.key.get_pressed()
         get_sc = getattr(pygame.key, "get_scancode_pressed", None)
         if get_sc is not None:
@@ -223,6 +222,7 @@ class Player(pygame.sprite.Sprite):
             move_down = keys[pygame.K_s]
 
         self.is_moving = move_left or move_right or move_up or move_down
+        self.speed = int(self.base_speed * self.buff_manager.get_multiplier("move_speed"))
 
         if move_left and move_up: self.facing = "left_up"
         elif move_left and move_down: self.facing = "left_down"
@@ -249,7 +249,16 @@ class Player(pygame.sprite.Sprite):
                 if move_down: self.hitbox.bottom = wall.rect.top
                 if move_up: self.hitbox.top = wall.rect.bottom
 
-        self.rect.midbottom = self.hitbox.midbottom
+        # ==========================================
+        # 🔥 ВИЗУАЛЬНОЕ СМЕЩЕНИЕ (ОПУСКАЕМ КАРТИНКУ ВНИЗ К СТЕНЕ)
+        # ==========================================
+        self.rect.centerx = self.hitbox.centerx
+        
+        # Если персонаж всё еще не достает до нижней стены - увеличь до 35.
+        # Если он проваливается ногами В стену - уменьши до 15.
+        Y_OFFSET = 25 
+        self.rect.bottom = self.hitbox.bottom + Y_OFFSET
+        # ==========================================
 
         self._shoot(keys, bullet_group)
 

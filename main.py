@@ -1,10 +1,11 @@
 import sys
-
 import pygame
 
 import map_generator
 import settings
 import sprites
+from card_ui import CardSelectUI
+from cards import CardDeck
 from enemies import EnemyBullet, MeleeEnemy, PlayerBullet, RangedEnemy
 from hud import HUD, PauseMenu, DeathMenu
 from loot import LootManager
@@ -21,13 +22,18 @@ clock = pygame.time.Clock()
 hud = HUD()
 pause_menu = PauseMenu()
 death_menu = DeathMenu()
+card_ui = CardSelectUI()
+deck = CardDeck()
+
+buff_pending_clear = False
+paused_from_card_select = False
+pending_cards = None
 
 floor_font = pygame.font.SysFont("Arial", 28, bold=True)
 current_floor = 1
 
-
+# --- КЛАСС ДЛЯ АНАЛОГА ЛИФТА / ЛЮКА ---
 class Elevator(pygame.sprite.Sprite):
-
     def __init__(self, x, y, size):
         super().__init__()
         self.image = pygame.Surface((size, size))
@@ -41,27 +47,12 @@ class Elevator(pygame.sprite.Sprite):
         )
         self.rect = self.image.get_rect(center=(x, y))
 
-
-def spawn_merchant(room_manager):
-    if room_manager.all_rooms:
-        first_room = room_manager.all_rooms[0]
-        return Merchant(
-            first_room.pixel_rect.centerx,
-            first_room.pixel_rect.top + 60
-        )
-    return None
-
-
 def init_game(existing_player=None):
-    # ПРИНИМАЕМ ВСЕ 6 ЗНАЧЕНИЙ ИЗ ГЕНЕРАТОРА (Фикс ошибки со скриншота image_86b863.png)
-    (
-        game_map,
-        spawn_x,
-        spawn_y,
-        exit_x,
-        exit_y,
-        rooms_data,
-    ) = map_generator.create_map(settings.MAP_COLS, settings.MAP_ROWS)
+    global buff_pending_clear, paused_from_card_select, pending_cards
+
+    game_map, spawn_x, spawn_y, rooms_data = map_generator.create_map(
+        settings.MAP_COLS, settings.MAP_ROWS
+    )
 
     all_sprites = pygame.sprite.Group()
     walls_group = pygame.sprite.Group()
@@ -115,29 +106,10 @@ def init_game(existing_player=None):
 
     room_manager = RoomManager(rooms_data, settings.TILE_SIZE)
 
-    if hasattr(room_manager, "combat_rooms"):
-        cleaned_rooms = []
-        for r in room_manager.combat_rooms:
-            is_s = (
-                    getattr(r, "is_spawn", False)
-                    or (isinstance(r, dict) and r.get("is_spawn"))
-                    or False
-            )
-            is_e = (
-                    getattr(r, "is_exit", False)
-                    or (isinstance(r, dict) and r.get("is_exit"))
-                    or False
-            )
-            if hasattr(r, "room_data") and isinstance(r.room_data, dict):
-                is_s = is_s or r.room_data.get("is_spawn")
-                is_e = is_e or r.room_data.get("is_exit")
-            if hasattr(r, "type"):
-                is_s = is_s or (getattr(r, "type") == "spawn")
-                is_e = is_e or (getattr(r, "type") == "exit")
-
-            if not is_s and not is_e:
-                cleaned_rooms.append(r)
-        room_manager.combat_rooms = cleaned_rooms
+    deck.reset()
+    buff_pending_clear = False
+    paused_from_card_select = False
+    pending_cards = None
 
     return (
         player,
@@ -151,7 +123,6 @@ def init_game(existing_player=None):
         exit_group,
         loot_manager,
     )
-
 
 # Первый запуск
 (
@@ -171,9 +142,21 @@ merchant = spawn_merchant(room_manager)
 game_state = "playing"
 running = True
 
+def clear_card_state():
+    global pending_cards, buff_pending_clear, paused_from_card_select
+    room_manager.card_event_pending = False
+    pending_cards = None
+    buff_pending_clear = False
+    paused_from_card_select = False
+    player.buff_manager.clear()
+
+# ==========================================
+# ГЛАВНЫЙ ИГРОВОЙ ЦИКЛ
+# ==========================================
 while running:
     clock.tick(settings.FPS)
 
+    # --- ОБРАБОТКА СОБЫТИЙ ---
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -183,8 +166,16 @@ while running:
                 if game_state == "playing":
                     game_state = "paused"
                     pause_menu.active = True
+                elif game_state == "card_select":
+                    game_state = "paused"
+                    pause_menu.active = True
+                    paused_from_card_select = True
                 elif game_state == "paused":
-                    game_state = "playing"
+                    if paused_from_card_select:
+                        game_state = "card_select"
+                        paused_from_card_select = False
+                    else:
+                        game_state = "playing"
                     pause_menu.active = False
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -193,10 +184,22 @@ while running:
             if game_state == "paused":
                 result = pause_menu.handle_click(event.pos)
                 if result == "resume":
-                    game_state = "playing"
+                    if paused_from_card_select:
+                        game_state = "card_select"
+                        paused_from_card_select = False
+                    else:
+                        game_state = "playing"
                     pause_menu.active = False
                 elif result == "quit":
                     running = False
+            elif game_state == "card_select":
+                chosen = card_ui.handle_click(event.pos)
+                if chosen:
+                    deck.mark_chosen(chosen.id)
+                    player.buff_manager.apply_card(chosen)
+                    buff_pending_clear = True
+                    pending_cards = None
+                    game_state = "playing"
             elif game_state == "dead":
                 result = death_menu.handle_click(event.pos)
                 if result == "restart":
@@ -222,6 +225,7 @@ while running:
                 elif result == "quit":
                     running = False
 
+    # --- ОБНОВЛЕНИЕ ИГРЫ ---
     if game_state == "playing":
         if merchant:
             merchant.update(player)
@@ -242,46 +246,14 @@ while running:
             player, enemies, all_sprites, walls_group, doors_group, loot_manager
         )
 
-        # --- ОБНОВЛЕНИЕ ЛУТА ---
-        loot_manager.update_magnet(player)
-
-        collected_coins = loot_manager.update(player)
-        if hasattr(player, "gold"):
-            player.gold += collected_coins
-
-        loot_manager.collect_exp(player, room_manager)
-
-        # Обработка попаданий и спавн опыта
-        hits = pygame.sprite.groupcollide(player_bullets, enemies, True, False)
-        for bullet, hit_list in hits.items():
-            for e in hit_list:
-                died = e.take_damage(bullet.damage)
-                if died:
-                    loot_manager.spawn_exp(e)
-
-        hits = pygame.sprite.spritecollide(player, enemy_bullets, True)
-        for b in hits:
-            died = player.take_damage(b.damage)
-            if died:
-                game_state = "dead"
-                death_menu.active = True
-
-        if player.is_dead and pygame.time.get_ticks() - player.death_time > 1333:
-            game_state = "dead"
-            death_menu.active = True
-
-        # --- ИЗМЕНЕННАЯ ЛОГИКА ПЕРЕХОДА НА СЛЕДУЮЩИЙ ЭТАЖ ---
-        all_combat_cleared = (
-            all(room.cleared for room in room_manager.combat_rooms)
-            if room_manager.combat_rooms
-            else True
+        # Проверяем переход на следующий этаж
+        all_combat_cleared = all(
+            room.cleared for room in room_manager.combat_rooms
         )
 
-        if all_combat_cleared and pygame.sprite.spritecollide(
-                player, exit_group, False
-        ):
+        # ИСПРАВЛЕНИЕ: Теперь лифт реагирует только на точный хитбокс ног
+        if all_combat_cleared and pygame.sprite.spritecollide(player, exit_group, False, collided=lambda p, e: p.hitbox.colliderect(e.rect)):
             current_floor += 1
-
             (
                 player,
                 all_sprites,
@@ -292,12 +264,49 @@ while running:
                 doors_group,
                 room_manager,
                 exit_group,
-                loot_manager,
             ) = init_game(existing_player=player)
 
-            merchant = spawn_merchant(room_manager)
+        if room_manager.room_just_cleared and buff_pending_clear:
+            player.buff_manager.clear()
+            buff_pending_clear = False
+
+        if room_manager.card_event_pending:
+            pending_cards = deck.draw(4)
+            card_ui.set_cards(pending_cards)
+            room_manager.card_event_pending = False
+            game_state = "card_select"
+
+        hits = pygame.sprite.groupcollide(player_bullets, enemies, True, False)
+        for bullet, hit_list in hits.items():
+            damage = int(bullet.damage * player.buff_manager.get_multiplier("damage_dealt"))
+            for e in hit_list:
+                e.take_damage(damage)
+
+        # ИСПРАВЛЕНИЕ: Вражеские пули дамажат только если попадают в точный хитбокс
+        hits = pygame.sprite.spritecollide(
+            player, 
+            enemy_bullets, 
+            True, 
+            collided=lambda p, b: p.hitbox.colliderect(b.rect)
+        )
+        for b in hits:
+            died = player.take_damage(b.damage)
+            if died:
+                game_state = "dead"
+                death_menu.active = True
+                clear_card_state()
+
+        if player.is_dead and pygame.time.get_ticks() - player.death_time > 1333:
+            game_state = "dead"
+            death_menu.active = True
+            clear_card_state()
+
+    if game_state == "card_select":
+        card_ui.handle_hover(pygame.mouse.get_pos())
+
 
     screen.fill(settings.BLACK)
+
 
     for wall in walls_group:
         screen.blit(wall.image, camera.apply(wall.rect))
@@ -306,31 +315,31 @@ while running:
     for ev in exit_group:
         screen.blit(ev.image, camera.apply(ev.rect))
 
-    # --- ОТРИСОВКА ЛУТА ---
-    loot_manager.draw(screen, camera)
-
+    # 3. Рисуем персонажей и пули поверх пола
     for enemy in enemies:
         screen.blit(enemy.image, camera.apply(enemy.rect))
         enemy.draw_health_bar(screen, camera)
-
     for b in player_bullets:
         screen.blit(b.image, camera.apply(b.rect))
     for b in enemy_bullets:
         screen.blit(b.image, camera.apply(b.rect))
-
+        
     screen.blit(player.image, camera.apply(player.rect))
 
-    if merchant:
-        merchant.draw(screen, camera)
+    # 4. Рисуем интерфейс игрока (ХП, номер этажа)
+    hud.draw_player_hp(screen, player)
+    floor_text = floor_font.render(f"Этаж: {current_floor}", True, (255, 215, 0))
+    screen.blit(floor_text, (20, 60))
 
-    # Новый метод прорисовки интерфейса (здоровье, монеты, этаж)
-    hud.draw(screen, player, current_floor)
-
+    # 5. В САМОМ КОНЦЕ рисуем меню, чтобы они 100% перекрывали игру!
+    if game_state == "card_select":
+        card_ui.draw(screen)
     if game_state == "paused":
         pause_menu.draw(screen)
     if game_state == "dead":
         death_menu.draw(screen)
-
+    
+    # 6. Обновляем экран
     pygame.display.flip()
 
 pygame.quit()
