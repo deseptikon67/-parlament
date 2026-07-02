@@ -117,7 +117,7 @@ class LootManager:
 
     def collect_exp(self, player, room_manager):
 
-        room_cleared = any(room.cleared for room in room_manager.rooms)
+        room_cleared = any(room.cleared for room in room_manager.combat_rooms)
 
         if not room_cleared:
             return
