@@ -1,6 +1,5 @@
 import sys
 import pygame
-
 import map_generator
 import settings
 import sprites
@@ -14,6 +13,12 @@ from merchant import Merchant
 from score import ScoreManager
 from timer import RunTimer
 
+# --- НОВЫЙ ИМПОРТ ИЗ ВЕТКИ НАПАРНИКА ---
+from card_ui import CardSelectUI
+from cards import CardDeck
+
+camera = settings.camera
+
 pygame.init()
 screen = pygame.display.set_mode((settings.WIDTH, settings.HEIGHT))
 pygame.display.set_caption("рогалик")
@@ -25,6 +30,11 @@ death_menu = DeathMenu()
 score_manager = ScoreManager()
 run_timer = RunTimer()
 
+# --- ИНИЦИАЛИЗАЦИЯ СИСТЕМЫ КАРТОЧЕК ---
+card_ui = CardSelectUI()
+card_deck = CardDeck()  # Колода карт
+
+floor_font = pygame.font.SysFont("Arial", 28, bold=True)
 current_floor = 1
 
 
@@ -40,21 +50,25 @@ class Elevator(pygame.sprite.Sprite):
 
 
 def spawn_merchant(room_manager):
-    if not room_manager or not room_manager.all_rooms:
-        return None
+    if room_manager.all_rooms:
+        first_room = room_manager.all_rooms[0]
+        return Merchant(
+            first_room.pixel_rect.centerx,
+            first_room.pixel_rect.top + 60
+        )
+    return None
 
-    first_room = room_manager.all_rooms[0]
-
-    return Merchant(
-        first_room.pixel_rect.centerx,
-        first_room.pixel_rect.top + 60
-    )
 
 
 def init_game(existing_player=None):
-    game_map, spawn_x, spawn_y, rooms_data = map_generator.create_map(
-        settings.MAP_COLS, settings.MAP_ROWS
-    )
+    (
+        game_map,
+        spawn_x,
+        spawn_y,
+        exit_x,
+        exit_y,
+        rooms_data,
+    ) = map_generator.create_map(settings.MAP_COLS, settings.MAP_ROWS)
 
     all_sprites = pygame.sprite.Group()
     walls_group = pygame.sprite.Group()
@@ -77,11 +91,20 @@ def init_game(existing_player=None):
 
     all_sprites.add(player)
 
-    exit_room = next((r for r in rooms_data if r.get("is_exit")), None)
-    if exit_room:
-        cx = exit_room["cx"] * settings.TILE_SIZE + settings.TILE_SIZE // 2
-        cy = exit_room["cy"] * settings.TILE_SIZE + settings.TILE_SIZE // 2
-        exit_group.add(Elevator(cx, cy, settings.TILE_SIZE * 2))
+    exit_room_data = next((r for r in rooms_data if isinstance(r, dict) and r.get("is_exit")), None)
+
+    if exit_room_data and "cx" in exit_room_data and "cy" in exit_room_data:
+        pixel_cx = exit_room_data["cx"] * settings.TILE_SIZE + settings.TILE_SIZE // 2
+        pixel_cy = exit_room_data["cy"] * settings.TILE_SIZE + settings.TILE_SIZE // 2
+    else:
+        if exit_x == spawn_x and exit_y == spawn_y:
+            exit_x = settings.MAP_COLS - 4
+            exit_y = settings.MAP_ROWS - 4
+        pixel_cx = exit_x * settings.TILE_SIZE + settings.TILE_SIZE // 2
+        pixel_cy = exit_y * settings.TILE_SIZE + settings.TILE_SIZE // 2
+
+    elevator = Elevator(pixel_cx, pixel_cy, settings.TILE_SIZE * 2)
+    exit_group.add(elevator)
 
     for r in range(len(game_map)):
         for c in range(len(game_map[r])):
@@ -92,6 +115,30 @@ def init_game(existing_player=None):
 
     room_manager = RoomManager(rooms_data, settings.TILE_SIZE)
     room_manager.score_given = False
+
+    if hasattr(room_manager, "combat_rooms"):
+        cleaned_rooms = []
+        for r in room_manager.combat_rooms:
+            is_s = (
+                    getattr(r, "is_spawn", False)
+                    or (isinstance(r, dict) and r.get("is_spawn"))
+                    or False
+            )
+            is_e = (
+                    getattr(r, "is_exit", False)
+                    or (isinstance(r, dict) and r.get("is_exit"))
+                    or False
+            )
+            if hasattr(r, "room_data") and isinstance(r.room_data, dict):
+                is_s = is_s or r.room_data.get("is_spawn")
+                is_e = is_e or r.room_data.get("is_exit")
+            if hasattr(r, "type"):
+                is_s = is_s or (getattr(r, "type") == "spawn")
+                is_e = is_e or (getattr(r, "type") == "exit")
+
+            if not is_s and not is_e:
+                cleaned_rooms.append(r)
+        room_manager.combat_rooms = cleaned_rooms
 
     return (
         player,
@@ -105,6 +152,39 @@ def init_game(existing_player=None):
         exit_group,
         loot_manager,
     )
+
+
+# --- ФУНКЦИЯ "ПЕРЕВОДЧИК" ДЛЯ ПРИМЕНЕНИЯ И СБРОСА СТАТОВ ---
+def apply_card_stat(player_obj, card_stat_name, multiplier, revert=False):
+    # Если мы отменяем старую карту (revert=True), мы ДЕЛИМ на множитель (откатываем)
+    actual_mult = (1.0 / multiplier) if revert else multiplier
+    action_text = "[-] СБРОС" if revert else "[+] ПРИМЕНЕНИЕ"
+
+    # 1. УРОН
+    if card_stat_name == "damage_dealt":
+        player_obj.bullet_damage = player_obj.bullet_damage * actual_mult
+        print(f"{action_text} {card_stat_name}: Урон пули стал {player_obj.bullet_damage:.1f}")
+
+    # 2. СКОРОСТЬ
+    elif card_stat_name == "move_speed":
+        player_obj.base_speed = player_obj.base_speed * actual_mult
+        print(f"{action_text} {card_stat_name}: Скорость стала {player_obj.base_speed:.1f}")
+
+    # 3. ПЕРЕЗАРЯДКА
+    elif card_stat_name == "shoot_cooldown":
+        player_obj.base_shoot_cooldown = player_obj.base_shoot_cooldown * actual_mult
+        print(f"{action_text} {card_stat_name}: Кулдаун стрельбы стал {player_obj.base_shoot_cooldown:.1f}")
+
+    # 4. ВХОДЯЩИЙ УРОН (ЗАЩИТА)
+    elif card_stat_name == "damage_taken":
+        bm = player_obj.buff_manager
+        d = getattr(bm, "multipliers", getattr(bm, "_multipliers", {}))
+        current = d.get(card_stat_name, 1.0)
+        d[card_stat_name] = current * actual_mult
+        print(f"{action_text} {card_stat_name}: Множитель уязвимости стал {d[card_stat_name]:.2f}")
+
+
+# -----------------------------------------------------------------
 
 
 (
@@ -143,8 +223,34 @@ while running:
                     pause_menu.active = False
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if game_state == "card_select":
+                selected_card = card_ui.handle_click(event.pos)
+                if selected_card is not None:
+                    # Убираем карту из колоды
+                    card_deck.mark_chosen(selected_card.id)
 
-            if game_state == "paused":
+                    # --- ШАГ 1: ОТМЕНЯЕМ СТАРУЮ КАРТУ (ЕСЛИ ОНА БЫЛА) ---
+                    if hasattr(player, "active_card") and player.active_card is not None:
+                        old_card = player.active_card
+                        print(f"\n--- ОТКАТ СТАРОЙ КАРТЫ: {old_card.name} ---")
+                        apply_card_stat(player, old_card.buff_stat, old_card.buff_value, revert=True)
+                        apply_card_stat(player, old_card.debuff_stat, old_card.debuff_value, revert=True)
+
+                    # --- ШАГ 2: ПРИМЕНЯЕМ НОВУЮ КАРТУ ---
+                    print(f"\n--- ВЫБРАНА НОВАЯ КАРТА: {selected_card.name} ---")
+                    apply_card_stat(player, selected_card.buff_stat, selected_card.buff_value, revert=False)
+                    apply_card_stat(player, selected_card.debuff_stat, selected_card.debuff_value, revert=False)
+
+                    # --- ШАГ 3: ЗАПОМИНАЕМ ЕЁ КАК АКТИВНУЮ ---
+                    player.active_card = selected_card
+
+                    # Возвращаемся в игру
+                    game_state = "playing"
+
+            elif merchant and game_state == "playing":
+                merchant.handle_click(player, event.pos)
+
+            elif game_state == "paused":
                 result = pause_menu.handle_click(event.pos)
                 if result == "resume":
                     game_state = "playing"
@@ -182,6 +288,25 @@ while running:
                     except Exception as e:
                         print("RESTART ERROR:", e)
 
+                    current_floor = 1
+                    (
+                        player,
+                        all_sprites,
+                        walls_group,
+                        enemies,
+                        player_bullets,
+                        enemy_bullets,
+                        doors_group,
+                        room_manager,
+                        exit_group,
+                        loot_manager,
+                    ) = init_game()
+                    if hasattr(player, "gold"):
+                        player.gold = 0
+
+                    merchant = spawn_merchant(room_manager)
+                    game_state = "playing"
+                    death_menu.active = False
                 elif result == "quit":
                     running = False
 
@@ -208,14 +333,19 @@ while running:
         room_manager.update(player, enemies, all_sprites,
                             walls_group, doors_group, loot_manager)
 
+        # ЛОВИМ СИГНАЛ ЗАЧИСТКИ КОМНАТЫ
+        if room_manager.card_event_pending:
+            drawn_cards = card_deck.draw(3)
+            card_ui.set_cards(drawn_cards)
+            game_state = "card_select"
+            room_manager.card_event_pending = False
+
         loot_manager.update_magnet(player)
-        collected = loot_manager.update(player)
 
-        if collected:
-            for _ in range(collected):
-                score_manager.coin()
+        collected_coins = loot_manager.update(player)
+        if hasattr(player, "gold"):
+            player.gold += collected_coins
 
-        player.gold += collected
         loot_manager.collect_exp(player, room_manager)
 
         hits = pygame.sprite.groupcollide(player_bullets, enemies, True, False)
@@ -261,18 +391,17 @@ while running:
                 exit_group,
                 loot_manager,
             ) = init_game(existing_player=player)
-
             merchant = spawn_merchant(room_manager)
 
-    # ================= RENDER =================
+    if game_state == "card_select":
+        card_ui.handle_hover(pygame.mouse.get_pos())
+
     screen.fill(settings.BLACK)
 
     for wall in walls_group:
         screen.blit(wall.image, camera.apply(wall.rect))
-
     for door in doors_group:
         screen.blit(door.image, camera.apply(door.rect))
-
     for ev in exit_group:
         screen.blit(ev.image, camera.apply(ev.rect))
 

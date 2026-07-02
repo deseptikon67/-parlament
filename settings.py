@@ -1,6 +1,6 @@
 from Camera import Camera
 
-WIDTH = 1440
+WIDTH = 800
 HEIGHT = 600
 
 FPS = 60

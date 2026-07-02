@@ -1,13 +1,9 @@
 import random
-
 import pygame
-
 import sprites
 from enemies import BurstRangedEnemy, MeleeEnemy, RangedEnemy
 
-
 class Room:
-
     def __init__(self, room_data, tile_size):
         self.tile_size = tile_size
         self.cx = room_data["cx"]
@@ -42,7 +38,6 @@ class Room:
         return RangedEnemy(px, py)
 
     def activate(self, enemies_group, all_sprites, walls_group, doors_group):
-        # Если комната спавна или выхода — врагов и дверей не будет!
         if self.activated or self.is_spawn or self.is_exit:
             return
         self.activated = True
@@ -76,7 +71,7 @@ class Room:
 
     def check_cleared(self, loot_manager=None):
         if not self.activated or self.cleared:
-            return
+            return False
         if all(not e.alive() for e in self.room_enemies):
             self.cleared = True
             
@@ -87,41 +82,31 @@ class Room:
             for w in self.corridor_walls:
                 w.kill()
             self.corridor_walls.clear()
-
+            return True
+        return False
 
 class RoomManager:
-
     def __init__(self, rooms_data, tile_size):
-        # Теперь храним вообще все комнаты, но разделяем их логически
         self.all_rooms = [Room(r, tile_size) for r in rooms_data]
 
-        # Боевые комнаты (исключая спавн и выход)
+        # --- ВОТ ЭТА СТРОЧКА ПОТЕРЯЛАСЬ! ВЕРНУЛИ ЕЁ ---
         self.combat_rooms = [
             r for r in self.all_rooms if not r.is_spawn and not r.is_exit
         ]
 
-        # Находим комнату выхода
         self.exit_room = next((r for r in self.all_rooms if r.is_exit), None)
 
-    def update(self, player, enemies_group, all_sprites, walls_group, doors_group, loot_manager=None):
-        # Обновляем только боевые комнаты
+        self.room_just_cleared = False
+        self.card_event_pending = False
+
+    def update(self, player, enemies, all_sprites, walls_group, doors_group, loot_manager):
+        self.room_just_cleared = False
+
         for room in self.combat_rooms:
-            if not room.activated and room.is_player_near_room_center(
-                player.rect
-            ):
-                room.activate(
-                    enemies_group, all_sprites, walls_group, doors_group
-                )
+            if not room.activated and room.is_player_near_room_center(player.rect):
+                room.activate(enemies, all_sprites, walls_group, doors_group)
             if room.activated and not room.cleared:
-                room.check_cleared(loot_manager)
-
-    def is_floor_complete(self, player_rect):
-        """Возвращает True, если ВСЕ боевые комнаты зачищены И игрок дошел до
-
-        комнаты выхода.
-        """
-        all_combat_cleared = all(room.cleared for room in self.combat_rooms)
-        if all_combat_cleared and self.exit_room:
-            # Проверяем, наступил ли игрок в зону комнаты выхода
-            return self.exit_room.pixel_rect.colliderect(player_rect)
-        return False
+                if room.check_cleared():
+                    # Как только комната зачищена - выдаем карты!
+                    self.room_just_cleared = True
+                    self.card_event_pending = True
