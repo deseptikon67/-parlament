@@ -3,7 +3,7 @@ import settings
 
 
 class HUD:
-    def draw(self, surface, player, current_floor):
+    def draw(self, surface, player, current_floor, score_display=None):
         w, h = surface.get_size()
 
         margin = max(15, int(w * 0.015))
@@ -54,7 +54,21 @@ class HUD:
 
         y += font_size + 4
 
-        
+        # --- ОТРИСОВКА ТАЙМЕРА И ОЧКОВ ---
+        if score_display:
+            surface.blit(font.render(
+                f"Время: {score_display.score_system.get_formatted_time()}",
+                True,
+                (100, 200, 255)
+            ), (margin, y))
+
+            y += font_size + 4
+
+            surface.blit(font.render(
+                f"Очки: {score_display.score_system.score}",
+                True,
+                (255, 215, 0)
+            ), (margin, y))
 
 
 class PauseMenu:
@@ -134,6 +148,5 @@ class DeathMenu:
         if self.btn_quit.collidepoint(mouse_pos):
             return "quit"
         return None
-
 
 
