@@ -40,7 +40,6 @@ class Elevator(pygame.sprite.Sprite):
 
 
 def init_game(existing_player=None):
-    # Принимаем точные, раздельные координаты спавна и выхода из генератора
     (
         game_map,
         spawn_x,
@@ -71,13 +70,23 @@ def init_game(existing_player=None):
 
     all_sprites.add(player)
 
-    # ЖЁСТКИЙ СПАВН ЛИФТА: Ставим его строго по координатам exit_x и exit_y (последняя комната)
-    pixel_cx = exit_x * settings.TILE_SIZE + settings.TILE_SIZE // 2
-    pixel_cy = exit_y * settings.TILE_SIZE + settings.TILE_SIZE // 2
+    # --- НАДЕЖНЫЙ ФИКС ЛИФТА (Ищет комнату выхода) ---
+    exit_room_data = next((r for r in rooms_data if isinstance(r, dict) and r.get("is_exit")), None)
+
+    if exit_room_data and "cx" in exit_room_data and "cy" in exit_room_data:
+        pixel_cx = exit_room_data["cx"] * settings.TILE_SIZE + settings.TILE_SIZE // 2
+        pixel_cy = exit_room_data["cy"] * settings.TILE_SIZE + settings.TILE_SIZE // 2
+    else:
+        if exit_x == spawn_x and exit_y == spawn_y:
+            exit_x = settings.MAP_COLS - 4
+            exit_y = settings.MAP_ROWS - 4
+        pixel_cx = exit_x * settings.TILE_SIZE + settings.TILE_SIZE // 2
+        pixel_cy = exit_y * settings.TILE_SIZE + settings.TILE_SIZE // 2
+
     elevator = Elevator(pixel_cx, pixel_cy, settings.TILE_SIZE * 2)
     exit_group.add(elevator)
+    # -------------------------------------------------
 
-    # Строим стены
     for r in range(len(game_map)):
         for c in range(len(game_map[r])):
             if game_map[r][c] == 1:
@@ -87,22 +96,20 @@ def init_game(existing_player=None):
                 all_sprites.add(wall)
                 walls_group.add(wall)
 
-    # Создаем менеджер комнат
     room_manager = RoomManager(rooms_data, settings.TILE_SIZE)
 
-    # Страховка от спавна врагов в начальной и конечной комнатах
     if hasattr(room_manager, "combat_rooms"):
         cleaned_rooms = []
         for r in room_manager.combat_rooms:
             is_s = (
-                getattr(r, "is_spawn", False)
-                or (isinstance(r, dict) and r.get("is_spawn"))
-                or False
+                    getattr(r, "is_spawn", False)
+                    or (isinstance(r, dict) and r.get("is_spawn"))
+                    or False
             )
             is_e = (
-                getattr(r, "is_exit", False)
-                or (isinstance(r, dict) and r.get("is_exit"))
-                or False
+                    getattr(r, "is_exit", False)
+                    or (isinstance(r, dict) and r.get("is_exit"))
+                    or False
             )
             if hasattr(r, "room_data") and isinstance(r.room_data, dict):
                 is_s = is_s or r.room_data.get("is_spawn")
@@ -206,16 +213,14 @@ while running:
             player, enemies, all_sprites, walls_group, doors_group
         )
 
-        # Проверяем зачистку истинных боевых комнат
         all_combat_cleared = (
             all(room.cleared for room in room_manager.combat_rooms)
             if room_manager.combat_rooms
             else True
         )
 
-        # Переход на некст уровень при наступлении на лифт
         if all_combat_cleared and pygame.sprite.spritecollide(
-            player, exit_group, False
+                player, exit_group, False
         ):
             current_floor += 1
             (
@@ -264,6 +269,8 @@ while running:
         screen.blit(b.image, camera.apply(b.rect))
 
     screen.blit(player.image, camera.apply(player.rect))
+
+    # Используем старый метод отрисовки HP, чтобы не ломать проект до мерджа
     hud.draw_player_hp(screen, player)
 
     floor_text = floor_font.render(
