@@ -1,7 +1,7 @@
 import random
 import pygame
 import sprites
-from enemies import BurstRangedEnemy, MeleeEnemy, RangedEnemy
+from enemies import BurstRangedEnemy, MeleeEnemy, RangedEnemy, TriangleRangedEnemy
 
 
 class Room:
@@ -39,9 +39,11 @@ class Room:
     def _pick_enemy(self, px, py):
         r = random.random()
 
-        if r < 0.12:
+        if r < 0.08:
             return BurstRangedEnemy(px, py)
-        if r < 0.56:
+        if r < 0.30:
+            return TriangleRangedEnemy(px, py)
+        if r < 0.64:
             return MeleeEnemy(px, py)
 
         return RangedEnemy(px, py)
@@ -54,7 +56,7 @@ class Room:
 
         ts = self.tile_size
         margin = 2 * ts
-        count = random.randint(1, 4)
+        count = random.randint(5, 8)
 
         for _ in range(count):
             px = random.randint(

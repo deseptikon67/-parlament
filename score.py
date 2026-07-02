@@ -8,7 +8,7 @@ class ScoreSystem:
     def __init__(self):
         self.score = 0
         self.start_time = time.time()
-        self.kill_points = 10        # очки за убийство
+        self.kill_points = 20        # очки за убийство
         self.room_clear_points = 50  # очки за зачистку комнаты
         self.coin_points = 1         # очки за монету
         

@@ -136,6 +136,8 @@ class Enemy(pygame.sprite.Sprite):
         self.hp -= amount
         if self.hp <= 0:
             self.kill()
+            return True
+        return False
 
     def draw_health_bar(self, surface, camera):
         if self.hp >= self.max_hp:
@@ -253,12 +255,14 @@ class MeleeEnemy(Enemy):
 
     def take_damage(self, amount):
         if self.is_dead:
-            return
+            return False
         self.hp -= amount
         if self.hp <= 0:
             self.is_dead = True
             self.state = "dead"
             self.frame_index = 0
+            return True
+        return False
 
     def animate(self):
         prev_anim = self.anim_list
@@ -378,12 +382,14 @@ class RangedEnemy(Enemy):
 
     def take_damage(self, amount):
         if self.is_dead:
-            return
+            return False
         self.hp -= amount
         if self.hp <= 0:
             self.is_dead = True
             self.state = "dead"
             self.frame_index = 0
+            return True
+        return False
 
     def animate(self):
         prev_anim = self.anim_list
@@ -450,6 +456,148 @@ class RangedEnemy(Enemy):
         self.rect.centerx = self.hitbox.centerx
         self.rect.bottom = self.hitbox.bottom + 85 
 
+class TriangleRangedEnemy(Enemy):
+    def __init__(self, x, y):
+        super().__init__(x, y, 35, 1.7, 8)
+        self.agro_radius = 700
+        self.preferred_dist = 200
+        self.shoot_cooldown = 2200
+
+        self.hitbox = pygame.Rect(0, 0, settings.TILE_SIZE - 25, settings.TILE_SIZE - 25)
+        self.hitbox.x = x
+        self.hitbox.y = y
+        self.x = float(self.hitbox.x)
+        self.y = float(self.hitbox.y)
+
+        self.is_dead = False
+        self.facing = "right"
+        self.state = "idle"
+        
+        size = int(settings.TILE_SIZE * 3)
+
+        def cut_strip(filename, frames_count, flip=False):
+            try:
+                strip = pygame.image.load(filename).convert_alpha()
+            except FileNotFoundError:
+                img = pygame.Surface((size, size))
+                img.fill((170, 80, 170))
+                return [img] * frames_count
+                
+            frame_w = strip.get_width() // frames_count
+            strip_h = strip.get_height()
+            frames = []
+            for i in range(frames_count):
+                rect = pygame.Rect(i * frame_w, 0, frame_w, strip_h)
+                frame = strip.subsurface(rect)
+                frame = pygame.transform.scale(frame, (size, size))
+                if flip:
+                    frame = pygame.transform.flip(frame, True, False)
+                frames.append(frame)
+            return frames
+
+        self.anim_idle_right = cut_strip(os.path.join("assets", "purple_slime_idle.png"), 4)
+        self.anim_idle_left = cut_strip(os.path.join("assets", "purple_slime_idle.png"), 4, flip=True)
+        
+        self.anim_walk_right = cut_strip(os.path.join("assets", "purple_slime_walk.png"), 8)
+        self.anim_walk_left = cut_strip(os.path.join("assets", "purple_slime_walk.png"), 8, flip=True)
+        
+        self.anim_death_right = cut_strip(os.path.join("assets", "purple_slime_death.png"), 10)
+        self.anim_death_left = cut_strip(os.path.join("assets", "purple_slime_death.png"), 10, flip=True)
+        
+        self.anim_list = self.anim_idle_right
+        self.frame_index = 0
+        self.anim_timer = pygame.time.get_ticks()
+        self.anim_speed = 100
+        self.image = self.anim_list[self.frame_index]
+        self.rect = self.image.get_rect()
+
+    def take_damage(self, amount):
+        if self.is_dead:
+            return False
+        self.hp -= amount
+        if self.hp <= 0:
+            self.is_dead = True
+            self.state = "dead"
+            self.frame_index = 0
+            return True
+        return False
+
+    def animate(self):
+        prev_anim = self.anim_list
+        
+        if self.state == "dead":
+            self.anim_list = self.anim_death_right if self.facing == "right" else self.anim_death_left
+        elif self.state == "walk":
+            self.anim_list = self.anim_walk_right if self.facing == "right" else self.anim_walk_left
+        else:
+            self.anim_list = self.anim_idle_right if self.facing == "right" else self.anim_idle_left
+            
+        if prev_anim != self.anim_list:
+            self.frame_index = 0
+            
+        now = pygame.time.get_ticks()
+        if now - self.anim_timer > self.anim_speed:
+            self.anim_timer = now
+            if self.state == "dead":
+                if self.frame_index < len(self.anim_list) - 1:
+                    self.frame_index += 1
+                else:
+                    self.kill()
+            else:
+                self.frame_index += 1
+                if self.frame_index >= len(self.anim_list):
+                    self.frame_index = 0
+                    
+        self.image = self.anim_list[self.frame_index]
+
+    def _rotate_vector(self, dx, dy, angle_degrees):
+        angle = math.radians(angle_degrees)
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        return dx * cos_a - dy * sin_a, dx * sin_a + dy * cos_a
+
+    def update(self, player, walls, enemy_bullets):
+        if self.is_dead:
+            self.animate()
+            return
+
+        dx = player.hitbox.centerx - self.hitbox.centerx
+        dy = player.hitbox.centery - self.hitbox.centery
+        dist = max(1, (dx * dx + dy * dy) ** 0.5)
+        
+        if dx > 0:
+            self.facing = "right"
+        elif dx < 0:
+            self.facing = "left"
+
+        is_moving = False
+        
+        if dist < self.agro_radius:
+            if dist > self.preferred_dist:
+                self._move_towards(player.hitbox.centerx, player.hitbox.centery, walls)
+                is_moving = True
+            elif dist < self.preferred_dist - 40:
+                self._move_towards(self.hitbox.centerx - dx, self.hitbox.centery - dy, walls)
+                is_moving = True
+                
+            now = pygame.time.get_ticks()
+            if now - self.last_attack > self.shoot_cooldown:
+                ndx, ndy = dx / dist, dy / dist
+                center = (ndx, ndy)
+                left = self._rotate_vector(ndx, ndy, 30)
+                right = self._rotate_vector(ndx, ndy, -30)
+                for vx, vy in (center, left, right):
+                    bullet = EnemyBullet(self.hitbox.centerx, self.hitbox.centery, vx, vy, self.damage, "purple")
+                    enemy_bullets.add(bullet)
+                self.last_attack = now
+                
+        self.state = "walk" if is_moving else "idle"
+        self.animate()
+        
+        self.rect.centerx = self.hitbox.centerx
+        self.rect.bottom = self.hitbox.bottom + 85
+
+
 class BurstRangedEnemy(Enemy):
     def __init__(self, x, y):
         super().__init__(x, y, 45, 1.3, 8)
@@ -511,12 +659,14 @@ class BurstRangedEnemy(Enemy):
 
     def take_damage(self, amount):
         if self.is_dead:
-            return
+            return False
         self.hp -= amount
         if self.hp <= 0:
             self.is_dead = True
             self.state = "dead"
             self.frame_index = 0
+            return True
+        return False
 
     def animate(self):
         prev_anim = self.anim_list

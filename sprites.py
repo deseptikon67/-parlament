@@ -99,6 +99,7 @@ class Player(pygame.sprite.Sprite):
         self.base_speed = settings.PLAYER_SPEED
         self.base_shoot_cooldown = 300
         self.buff_manager = BuffManager()
+        self.shoot_sound = None
 
         self.exp = 0
         self.level = 1
@@ -201,6 +202,11 @@ class Player(pygame.sprite.Sprite):
         bullet = PlayerBullet(self.rect.centerx, self.rect.centery, dx, dy, self.bullet_damage)
         bullet_group.add(bullet)
         self.last_shot = now
+        if getattr(self, 'shoot_sound', None) is not None:
+            try:
+                self.shoot_sound.play()
+            except Exception:
+                pass
 
     def update(self, walls, bullet_group):
         if self.is_dead:
