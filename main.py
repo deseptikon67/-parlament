@@ -13,7 +13,8 @@ from merchant import Merchant
 from card_ui import CardSelectUI
 from cards import CardDeck
 
-# --- ИМПОРТ СИСТЕМЫ ОЧКОВ ---
+# --- ИМПОРТ ОБНОВЛЕННОЙ СИСТЕМЫ СЧЕТА И ТАЙМЕРА ---
+# (Код адаптирован под новые параметры hud.py: score_manager и run_timer)
 from score import ScoreDisplay
 
 camera = settings.camera
@@ -24,9 +25,30 @@ pygame.display.set_caption("рогалик")
 clock = pygame.time.Clock()
 
 hud = HUD()
-score_display = ScoreDisplay()  # Инициализация счетчиков времени и очков
 pause_menu = PauseMenu()
 death_menu = DeathMenu()
+
+# В качестве run_timer и score_manager используем внутренние объекты из ScoreDisplay,
+# так как они идеально подходят по методам под твой новый hud.py
+score_display = ScoreDisplay()
+score_manager = score_display.score_system  # содержит .score и .get_top3() / .add_to_top()
+run_timer = score_display.score_system      # содержит .get_formatted_time()
+
+# Добавим заглушку метода get_top3, если его не было в score.py, 
+# чтобы избежать падений и динамически сохранять рекорды в сессии
+if not hasattr(score_manager, 'top3_scores'):
+    score_manager.top3_scores = []
+
+if not hasattr(score_manager, 'get_top3'):
+    def get_top3_dynamic():
+        return sorted(score_manager.top3_scores, reverse=True)[:3]
+    score_manager.get_top3 = get_top3_dynamic
+
+if not hasattr(score_manager, 'add_to_top'):
+    def add_to_top_dynamic(score_value):
+        score_manager.top3_scores.append(score_value)
+    score_manager.add_to_top = add_to_top_dynamic
+
 
 # --- ИНИЦИАЛИЗАЦИЯ СИСТЕМЫ КАРТОЧЕК ---
 card_ui = CardSelectUI()
@@ -158,28 +180,22 @@ def init_game(existing_player=None):
     )
 
 
-# --- ФУНКЦИЯ "ПЕРЕВОДЧИК" ДЛЯ ПРИМЕНЕНИЯ И СБРОСА СТАТОВ ---
 def apply_card_stat(player_obj, card_stat_name, multiplier, revert=False):
-    # Если мы отменяем старую карту (revert=True), мы ДЕЛИМ на множитель (откатываем)
     actual_mult = (1.0 / multiplier) if revert else multiplier
     action_text = "[-] СБРОС" if revert else "[+] ПРИМЕНЕНИЕ"
 
-    # 1. УРОН
     if card_stat_name == "damage_dealt":
         player_obj.bullet_damage = player_obj.bullet_damage * actual_mult
         print(f"{action_text} {card_stat_name}: Урон пули стал {player_obj.bullet_damage:.1f}")
 
-    # 2. СКОРОСТЬ
     elif card_stat_name == "move_speed":
         player_obj.base_speed = player_obj.base_speed * actual_mult
         print(f"{action_text} {card_stat_name}: Скорость стала {player_obj.base_speed:.1f}")
 
-    # 3. ПЕРЕЗАРЯДКА
     elif card_stat_name == "shoot_cooldown":
         player_obj.base_shoot_cooldown = player_obj.base_shoot_cooldown * actual_mult
         print(f"{action_text} {card_stat_name}: Кулдаун стрельбы стал {player_obj.base_shoot_cooldown:.1f}")
 
-    # 4. ВХОДЯЩИЙ УРОН (ЗАЩИТА)
     elif card_stat_name == "damage_taken":
         bm = player_obj.buff_manager
         d = getattr(bm, "multipliers", getattr(bm, "_multipliers", {}))
@@ -189,7 +205,6 @@ def apply_card_stat(player_obj, card_stat_name, multiplier, revert=False):
 
 
 # -----------------------------------------------------------------
-
 
 (
     player,
@@ -207,6 +222,7 @@ def apply_card_stat(player_obj, card_stat_name, multiplier, revert=False):
 merchant = spawn_merchant(room_manager)
 game_state = "playing"
 running = True
+final_score_saved = 0  # Хранилище итогового счета для экрана смерти
 
 while running:
     clock.tick(settings.FPS)
@@ -228,25 +244,19 @@ while running:
             if game_state == "card_select":
                 selected_card = card_ui.handle_click(event.pos)
                 if selected_card is not None:
-                    # Убираем карту из колоды
                     card_deck.mark_chosen(selected_card.id)
 
-                    # --- ШАГ 1: ОТМЕНЯЕМ СТАРУЮ КАРТУ (ЕСЛИ ОНА БЫЛА) ---
                     if hasattr(player, "active_card") and player.active_card is not None:
                         old_card = player.active_card
                         print(f"\n--- ОТКАТ СТАРОЙ КАРТЫ: {old_card.name} ---")
                         apply_card_stat(player, old_card.buff_stat, old_card.buff_value, revert=True)
                         apply_card_stat(player, old_card.debuff_stat, old_card.debuff_value, revert=True)
 
-                    # --- ШАГ 2: ПРИМЕНЯЕМ НОВУЮ КАРТУ ---
                     print(f"\n--- ВЫБРАНА НОВАЯ КАРТА: {selected_card.name} ---")
                     apply_card_stat(player, selected_card.buff_stat, selected_card.buff_value, revert=False)
                     apply_card_stat(player, selected_card.debuff_stat, selected_card.debuff_value, revert=False)
 
-                    # --- ШАГ 3: ЗАПОМИНАЕМ ЕЁ КАК АКТИВНУЮ ---
                     player.active_card = selected_card
-
-                    # Возвращаемся в игру
                     game_state = "playing"
 
             elif merchant and game_state == "playing":
@@ -264,7 +274,7 @@ while running:
                 result = death_menu.handle_click(event.pos)
                 if result == "restart":
                     current_floor = 1
-                    score_display.reset()  # Сброс таймера и очков при рестарте
+                    score_display.reset()  # Полный сброс текущих очков и времени
                     (
                         player,
                         all_sprites,
@@ -306,7 +316,6 @@ while running:
             player, enemies, all_sprites, walls_group, doors_group, loot_manager
         )
 
-        # ЛОВИМ СИГНАЛ ЗАЧИСТКИ КОМНАТЫ
         if room_manager.card_event_pending:
             drawn_cards = card_deck.draw(3)
             card_ui.set_cards(drawn_cards)
@@ -319,7 +328,7 @@ while running:
         if hasattr(player, "gold"):
             player.gold += collected_coins
             if collected_coins > 0:
-                score_display.add_coin_points(collected_coins)  # Очки за монеты
+                score_display.add_coin_points(collected_coins)
 
         loot_manager.collect_exp(player, room_manager)
 
@@ -329,16 +338,20 @@ while running:
                 died = e.take_damage(bullet.damage)
                 if died:
                     loot_manager.spawn_exp(e)
-                    score_display.add_kill_points()  # Очки за убийство врага
+                    score_display.add_kill_points()
 
         hits = pygame.sprite.spritecollide(player, enemy_bullets, True)
         for b in hits:
             died = player.take_damage(b.damage)
             if died:
+                final_score_saved = score_manager.score
+                score_manager.add_to_top(final_score_saved)  # Сохраняем результат в топ
                 game_state = "dead"
                 death_menu.active = True
 
         if player.is_dead and pygame.time.get_ticks() - player.death_time > 1333:
+            final_score_saved = score_manager.score
+            score_manager.add_to_top(final_score_saved)  # Сохраняем результат в топ
             game_state = "dead"
             death_menu.active = True
 
@@ -352,7 +365,7 @@ while running:
                 player, exit_group, False
         ):
             current_floor += 1
-            score_display.add_room_clear_points()  # Очки за зачистку этажа / переход в лифт
+            score_display.add_room_clear_points()
             (
                 player,
                 all_sprites,
@@ -395,16 +408,18 @@ while running:
     if merchant:
         merchant.draw(screen, camera)
 
-    # Передаем score_display в метод отрисовки HUD
-    hud.draw(screen, player, current_floor, score_display=score_display)
+    # Отрисовка HUD с обновленными параметрами
+    hud.draw(screen, player, current_floor, score_manager=score_manager, run_timer=run_timer)
 
     if game_state == "card_select":
         card_ui.draw(screen)
 
     if game_state == "paused":
         pause_menu.draw(screen)
+        
     if game_state == "dead":
-        death_menu.draw(screen)
+        # Отрисовка экрана смерти с передачей итогового счета и менеджера рекордов
+        death_menu.draw(screen, final_score=final_score_saved, score_manager=score_manager)
 
     pygame.display.flip()
 
