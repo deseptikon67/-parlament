@@ -93,6 +93,9 @@ class Player(pygame.sprite.Sprite):
         self.exp = 0
         self.level = 1
         self.exp_to_next_level = 5
+        
+        # --- ЗОЛОТО (ЛУТ) ---
+        self.gold = 0
 
         self.base_max_hp = self.max_hp
         self.base_damage_multiplier = 1.0
