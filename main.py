@@ -53,10 +53,15 @@ def spawn_merchant(room_manager):
 
 
 def init_game(existing_player=None):
-    # Используем корректный вызов генератора из ветки напарника
-    game_map, spawn_x, spawn_y, rooms_data = map_generator.create_map(
-        settings.MAP_COLS, settings.MAP_ROWS
-    )
+    # ПРИНИМАЕМ ВСЕ 6 ЗНАЧЕНИЙ ИЗ ГЕНЕРАТОРА (Фикс ошибки со скриншота image_86b863.png)
+    (
+        game_map,
+        spawn_x,
+        spawn_y,
+        exit_x,
+        exit_y,
+        rooms_data,
+    ) = map_generator.create_map(settings.MAP_COLS, settings.MAP_ROWS)
 
     all_sprites = pygame.sprite.Group()
     walls_group = pygame.sprite.Group()
@@ -89,11 +94,11 @@ def init_game(existing_player=None):
         pixel_cx = exit_room_data["cx"] * settings.TILE_SIZE + settings.TILE_SIZE // 2
         pixel_cy = exit_room_data["cy"] * settings.TILE_SIZE + settings.TILE_SIZE // 2
     else:
-        # Резервный расчет, если данные не найдены
-        fallback_x = settings.MAP_COLS - 4
-        fallback_y = settings.MAP_ROWS - 4
-        pixel_cx = fallback_x * settings.TILE_SIZE + settings.TILE_SIZE // 2
-        pixel_cy = fallback_y * settings.TILE_SIZE + settings.TILE_SIZE // 2
+        if exit_x == spawn_x and exit_y == spawn_y:
+            exit_x = settings.MAP_COLS - 4
+            exit_y = settings.MAP_ROWS - 4
+        pixel_cx = exit_x * settings.TILE_SIZE + settings.TILE_SIZE // 2
+        pixel_cy = exit_y * settings.TILE_SIZE + settings.TILE_SIZE // 2
 
     elevator = Elevator(pixel_cx, pixel_cy, settings.TILE_SIZE * 2)
     exit_group.add(elevator)
@@ -318,7 +323,7 @@ while running:
     if merchant:
         merchant.draw(screen, camera)
 
-    # Новый единый метод прорисовки интерфейса (здоровье, монеты, этаж)
+    # Новый метод прорисовки интерфейса (здоровье, монеты, этаж)
     hud.draw(screen, player, current_floor)
 
     if game_state == "paused":
