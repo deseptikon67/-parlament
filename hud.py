@@ -155,6 +155,84 @@ class PauseMenu:
         return None
 
 
+class StartMenu:
+    def __init__(self):
+        self.font_title = pygame.font.SysFont(None, 72)
+        self.font_btn = pygame.font.SysFont(None, 40)
+
+        self.btn_start = pygame.Rect(0, 0, 260, 56)
+        self.btn_quit = pygame.Rect(0, 0, 260, 56)
+
+    def draw(self, surface):
+        w, h = surface.get_size()
+
+        surface.fill((10, 10, 20))
+
+        title = self.font_title.render("РОГАЛИК", True, (255, 220, 100))
+        surface.blit(title, title.get_rect(center=(w // 2, h // 2 - 140)))
+
+        subtitle = self.font_btn.render("Убей врагов, собери монеты и выходи", True, (220, 220, 220))
+        surface.blit(subtitle, subtitle.get_rect(center=(w // 2, h // 2 - 90)))
+
+        self.btn_start.center = (w // 2, h // 2)
+        self.btn_quit.center = (w // 2, h // 2 + 90)
+
+        pygame.draw.rect(surface, (80, 80, 120), self.btn_start, border_radius=10)
+        pygame.draw.rect(surface, (80, 80, 120), self.btn_quit, border_radius=10)
+
+        start_text = self.font_btn.render("Начать игру", True, (255, 255, 255))
+        quit_text = self.font_btn.render("Выйти", True, (255, 255, 255))
+
+        surface.blit(start_text, start_text.get_rect(center=self.btn_start.center))
+        surface.blit(quit_text, quit_text.get_rect(center=self.btn_quit.center))
+
+    def handle_click(self, mouse_pos):
+        if self.btn_start.collidepoint(mouse_pos):
+            return "start"
+        if self.btn_quit.collidepoint(mouse_pos):
+            return "quit"
+        return None
+
+
+class FinishMenu:
+    def __init__(self):
+        self.font_title = pygame.font.SysFont(None, 64)
+        self.font_btn = pygame.font.SysFont(None, 40)
+        self.btn_quit = pygame.Rect(0, 0, 260, 56)
+
+    def draw(self, surface, final_score=None):
+        w, h = surface.get_size()
+
+        overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+        overlay.fill((10, 10, 30, 220))
+        surface.blit(overlay, (0, 0))
+
+        title = self.font_title.render("ВСЕ ЭТАЖИ ПРОЙДЕНЫ", True, (255, 220, 120))
+        surface.blit(title, title.get_rect(center=(w // 2, 120)))
+
+        if final_score is not None:
+            score_text = self.font_btn.render(
+                f"Финальный счёт: {final_score}",
+                True,
+                (255, 255, 255)
+            )
+            surface.blit(score_text, score_text.get_rect(center=(w // 2, 210)))
+
+        info_text = self.font_btn.render("Спасибо за игру!", True, (220, 220, 220))
+        surface.blit(info_text, info_text.get_rect(center=(w // 2, 260)))
+
+        self.btn_quit.center = (w // 2, h // 2 + 80)
+        pygame.draw.rect(surface, (70, 70, 100), self.btn_quit, border_radius=10)
+
+        quit_text = self.font_btn.render("Выйти", True, (255, 255, 255))
+        surface.blit(quit_text, quit_text.get_rect(center=self.btn_quit.center))
+
+    def handle_click(self, mouse_pos):
+        if self.btn_quit.collidepoint(mouse_pos):
+            return "quit"
+        return None
+
+
 class DeathMenu:
     def __init__(self):
         self.active = False
