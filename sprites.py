@@ -13,7 +13,10 @@ class Player(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
 
-        self.visual_size = int(settings.TILE_SIZE * 2.5)
+
+        super().__init__()
+
+        self.visual_size = int(settings.TILE_SIZE * 1.8) 
         
         def cut_strip(filename):
             frames_count = 8 
@@ -86,6 +89,35 @@ class Player(pygame.sprite.Sprite):
         self.shoot_cooldown = 300
         self.last_shot = 0
         self.bullet_damage = 20
+
+        self.exp = 0
+        self.level = 1
+        self.exp_to_next_level = 5
+
+        self.base_max_hp = self.max_hp
+        self.base_damage_multiplier = 1.0
+        self.damage_multiplier = 1.0
+
+    def add_exp(self, amount):
+
+            self.exp += amount
+
+            while self.exp >= self.exp_to_next_level:
+                self.exp -= self.exp_to_next_level
+
+                self.level += 1
+
+                # следующий уровень требует на 1 exp больше
+                self.exp_to_next_level += 1
+
+                # +5% максимального здоровья
+                self.max_hp = int(self.max_hp * 1.05)
+                self.hp = self.max_hp
+
+                # +1% урона
+                self.damage_multiplier *= 1.01
+
+                print(f"LEVEL UP! Уровень: {self.level}")
 
     # --- МЕТОД АНИМАЦИИ ---
     def animate(self):
