@@ -6,12 +6,15 @@ import map_generator
 import settings
 import sprites
 from enemies import EnemyBullet, MeleeEnemy, PlayerBullet, RangedEnemy
-from hud import DeathMenu, HUD, PauseMenu
+from hud import HUD, PauseMenu, DeathMenu
+from loot import LootManager
 from room_manager import RoomManager
-from settings import HEIGHT, WIDTH, camera
+
+camera = settings.camera
+from merchant import Merchant
 
 pygame.init()
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+screen = pygame.display.set_mode((settings.WIDTH, settings.HEIGHT))
 pygame.display.set_caption("рогалик")
 clock = pygame.time.Clock()
 
@@ -39,15 +42,21 @@ class Elevator(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=(x, y))
 
 
+def spawn_merchant(room_manager):
+    if room_manager.all_rooms:
+        first_room = room_manager.all_rooms[0]
+        return Merchant(
+            first_room.pixel_rect.centerx,
+            first_room.pixel_rect.top + 60
+        )
+    return None
+
+
 def init_game(existing_player=None):
-    (
-        game_map,
-        spawn_x,
-        spawn_y,
-        exit_x,
-        exit_y,
-        rooms_data,
-    ) = map_generator.create_map(settings.MAP_COLS, settings.MAP_ROWS)
+    # Используем корректный вызов генератора из ветки напарника
+    game_map, spawn_x, spawn_y, rooms_data = map_generator.create_map(
+        settings.MAP_COLS, settings.MAP_ROWS
+    )
 
     all_sprites = pygame.sprite.Group()
     walls_group = pygame.sprite.Group()
@@ -55,7 +64,10 @@ def init_game(existing_player=None):
     player_bullets = pygame.sprite.Group()
     enemy_bullets = pygame.sprite.Group()
     doors_group = pygame.sprite.Group()
-    exit_group = pygame.sprite.Group()
+    exit_group = pygame.sprite.Group()  # Группа для нашего лифта
+
+    # --- ИНИЦИАЛИЗАЦИЯ ЛУТ-МЕНЕДЖЕРА ---
+    loot_manager = LootManager()
 
     if existing_player is not None:
         player = existing_player
@@ -77,11 +89,11 @@ def init_game(existing_player=None):
         pixel_cx = exit_room_data["cx"] * settings.TILE_SIZE + settings.TILE_SIZE // 2
         pixel_cy = exit_room_data["cy"] * settings.TILE_SIZE + settings.TILE_SIZE // 2
     else:
-        if exit_x == spawn_x and exit_y == spawn_y:
-            exit_x = settings.MAP_COLS - 4
-            exit_y = settings.MAP_ROWS - 4
-        pixel_cx = exit_x * settings.TILE_SIZE + settings.TILE_SIZE // 2
-        pixel_cy = exit_y * settings.TILE_SIZE + settings.TILE_SIZE // 2
+        # Резервный расчет, если данные не найдены
+        fallback_x = settings.MAP_COLS - 4
+        fallback_y = settings.MAP_ROWS - 4
+        pixel_cx = fallback_x * settings.TILE_SIZE + settings.TILE_SIZE // 2
+        pixel_cy = fallback_y * settings.TILE_SIZE + settings.TILE_SIZE // 2
 
     elevator = Elevator(pixel_cx, pixel_cy, settings.TILE_SIZE * 2)
     exit_group.add(elevator)
@@ -132,6 +144,7 @@ def init_game(existing_player=None):
         doors_group,
         room_manager,
         exit_group,
+        loot_manager,
     )
 
 
@@ -146,8 +159,10 @@ def init_game(existing_player=None):
     doors_group,
     room_manager,
     exit_group,
+    loot_manager,
 ) = init_game()
 
+merchant = spawn_merchant(room_manager)
 game_state = "playing"
 running = True
 
@@ -168,6 +183,8 @@ while running:
                     pause_menu.active = False
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if merchant and game_state == "playing":
+                merchant.handle_click(player, event.pos)
             if game_state == "paused":
                 result = pause_menu.handle_click(event.pos)
                 if result == "resume":
@@ -189,14 +206,21 @@ while running:
                         doors_group,
                         room_manager,
                         exit_group,
+                        loot_manager,
                     ) = init_game()
+                    if hasattr(player, "gold"):
+                        player.gold = 0
+
+                    merchant = spawn_merchant(room_manager)
                     game_state = "playing"
                     death_menu.active = False
                 elif result == "quit":
                     running = False
 
     if game_state == "playing":
-        camera.update(player, WIDTH, HEIGHT)
+        if merchant:
+            merchant.update(player)
+        camera.update(player, screen.get_width(), screen.get_height())
         player.update(walls_group, player_bullets)
 
         for enemy in enemies:
@@ -210,35 +234,25 @@ while running:
         enemy_bullets.update(walls_group)
 
         room_manager.update(
-            player, enemies, all_sprites, walls_group, doors_group
+            player, enemies, all_sprites, walls_group, doors_group, loot_manager
         )
 
-        all_combat_cleared = (
-            all(room.cleared for room in room_manager.combat_rooms)
-            if room_manager.combat_rooms
-            else True
-        )
+        # --- ОБНОВЛЕНИЕ ЛУТА ---
+        loot_manager.update_magnet(player)
 
-        if all_combat_cleared and pygame.sprite.spritecollide(
-                player, exit_group, False
-        ):
-            current_floor += 1
-            (
-                player,
-                all_sprites,
-                walls_group,
-                enemies,
-                player_bullets,
-                enemy_bullets,
-                doors_group,
-                room_manager,
-                exit_group,
-            ) = init_game(existing_player=player)
+        collected_coins = loot_manager.update(player)
+        if hasattr(player, "gold"):
+            player.gold += collected_coins
 
+        loot_manager.collect_exp(player, room_manager)
+
+        # Обработка попаданий и спавн опыта
         hits = pygame.sprite.groupcollide(player_bullets, enemies, True, False)
         for bullet, hit_list in hits.items():
             for e in hit_list:
-                e.take_damage(bullet.damage)
+                died = e.take_damage(bullet.damage)
+                if died:
+                    loot_manager.spawn_exp(e)
 
         hits = pygame.sprite.spritecollide(player, enemy_bullets, True)
         for b in hits:
@@ -251,6 +265,33 @@ while running:
             game_state = "dead"
             death_menu.active = True
 
+        # --- ИЗМЕНЕННАЯ ЛОГИКА ПЕРЕХОДА НА СЛЕДУЮЩИЙ ЭТАЖ ---
+        all_combat_cleared = (
+            all(room.cleared for room in room_manager.combat_rooms)
+            if room_manager.combat_rooms
+            else True
+        )
+
+        if all_combat_cleared and pygame.sprite.spritecollide(
+                player, exit_group, False
+        ):
+            current_floor += 1
+
+            (
+                player,
+                all_sprites,
+                walls_group,
+                enemies,
+                player_bullets,
+                enemy_bullets,
+                doors_group,
+                room_manager,
+                exit_group,
+                loot_manager,
+            ) = init_game(existing_player=player)
+
+            merchant = spawn_merchant(room_manager)
+
     screen.fill(settings.BLACK)
 
     for wall in walls_group:
@@ -259,6 +300,10 @@ while running:
         screen.blit(door.image, camera.apply(door.rect))
     for ev in exit_group:
         screen.blit(ev.image, camera.apply(ev.rect))
+
+    # --- ОТРИСОВКА ЛУТА ---
+    loot_manager.draw(screen, camera)
+
     for enemy in enemies:
         screen.blit(enemy.image, camera.apply(enemy.rect))
         enemy.draw_health_bar(screen, camera)
@@ -270,13 +315,11 @@ while running:
 
     screen.blit(player.image, camera.apply(player.rect))
 
-    # Используем старый метод отрисовки HP, чтобы не ломать проект до мерджа
-    hud.draw_player_hp(screen, player)
+    if merchant:
+        merchant.draw(screen, camera)
 
-    floor_text = floor_font.render(
-        f"Этаж: {current_floor}", True, (255, 215, 0)
-    )
-    screen.blit(floor_text, (20, 60))
+    # Новый единый метод прорисовки интерфейса (здоровье, монеты, этаж)
+    hud.draw(screen, player, current_floor)
 
     if game_state == "paused":
         pause_menu.draw(screen)

@@ -1,7 +1,7 @@
 from Camera import Camera
 
-WIDTH = 1920
-HEIGHT = 1080
+WIDTH = 800
+HEIGHT = 600
 
 FPS = 60
 TILE_SIZE = 60
@@ -14,7 +14,6 @@ GREEN = (0, 200, 0)
 # Настройки игрока
 PLAYER_SPEED = 5
 
-
-MAP_COLS = 72
-MAP_ROWS = 48
+MAP_COLS = 80
+MAP_ROWS = 60
 camera = Camera(MAP_COLS * TILE_SIZE, MAP_ROWS * TILE_SIZE)

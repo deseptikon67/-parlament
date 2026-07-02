@@ -74,11 +74,16 @@ class Room:
             all_sprites.add(wall)
             self.corridor_walls.append(wall)
 
-    def check_cleared(self):
+    def check_cleared(self, loot_manager=None):
         if not self.activated or self.cleared:
             return
         if all(not e.alive() for e in self.room_enemies):
             self.cleared = True
+            
+            # Спавним лут при очистке комнаты
+            if loot_manager:
+                loot_manager.spawn_coins(self.pixel_rect)
+            
             for w in self.corridor_walls:
                 w.kill()
             self.corridor_walls.clear()
@@ -98,7 +103,7 @@ class RoomManager:
         # Находим комнату выхода
         self.exit_room = next((r for r in self.all_rooms if r.is_exit), None)
 
-    def update(self, player, enemies_group, all_sprites, walls_group, doors_group):
+    def update(self, player, enemies_group, all_sprites, walls_group, doors_group, loot_manager=None):
         # Обновляем только боевые комнаты
         for room in self.combat_rooms:
             if not room.activated and room.is_player_near_room_center(
@@ -108,7 +113,7 @@ class RoomManager:
                     enemies_group, all_sprites, walls_group, doors_group
                 )
             if room.activated and not room.cleared:
-                room.check_cleared()
+                room.check_cleared(loot_manager)
 
     def is_floor_complete(self, player_rect):
         """Возвращает True, если ВСЕ боевые комнаты зачищены И игрок дошел до
