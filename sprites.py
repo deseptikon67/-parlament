@@ -236,16 +236,16 @@ class Player(pygame.sprite.Sprite):
                 if move_down: self.hitbox.bottom = wall.rect.top
                 if move_up: self.hitbox.top = wall.rect.bottom
 
-        # ==========================================
-        # 🔥 ВИЗУАЛЬНОЕ СМЕЩЕНИЕ (ОПУСКАЕМ КАРТИНКУ ВНИЗ К СТЕНЕ)
-        # ==========================================
+        
+        #ВИЗУАЛЬНОЕ СМЕЩЕНИЕ (ОПУСКАЕМ КАРТИНКУ ВНИЗ К СТЕНЕ)
+        
         self.rect.centerx = self.hitbox.centerx
         
         # Если персонаж всё еще не достает до нижней стены - увеличь до 35.
         # Если он проваливается ногами В стену - уменьши до 15.
         Y_OFFSET = 25 
         self.rect.bottom = self.hitbox.bottom + Y_OFFSET
-        # ==========================================
+        
 
         self._shoot(keys, bullet_group)
 
