@@ -133,7 +133,7 @@ def init_game(existing_player=None):
     exit_group = pygame.sprite.Group()
 
     loot_manager = LootManager()
-
+    
     if existing_player is not None:
         player = existing_player
         player.rect.x = spawn_x * settings.TILE_SIZE
@@ -186,28 +186,59 @@ def init_game(existing_player=None):
 
     room_manager = RoomManager(rooms_data, settings.TILE_SIZE)
 
+    # --- ЖЕЛЕЗОБЕТОННАЯ ГЕОМЕТРИЧЕСКАЯ ФИЛЬТРАЦИЯ КОМНАТ ---
     if hasattr(room_manager, "combat_rooms"):
         cleaned_rooms = []
-        for r in room_manager.combat_rooms:
-            is_s = (
-                    getattr(r, "is_spawn", False)
-                    or (isinstance(r, dict) and r.get("is_spawn"))
-                    or False
-            )
-            is_e = (
-                    getattr(r, "is_exit", False)
-                    or (isinstance(r, dict) and r.get("is_exit"))
-                    or False
-            )
-            if hasattr(r, "room_data") and isinstance(r.room_data, dict):
-                is_s = is_s or r.room_data.get("is_spawn")
-                is_e = is_e or r.room_data.get("is_exit")
-            if hasattr(r, "type"):
-                is_s = is_s or (getattr(r, "type") == "spawn")
-                is_e = is_e or (getattr(r, "type") == "exit")
+        spawn_pixel_x = spawn_x * settings.TILE_SIZE + settings.TILE_SIZE // 2
+        spawn_pixel_y = spawn_y * settings.TILE_SIZE + settings.TILE_SIZE // 2
 
-            if not is_s and not is_e:
+        for r in room_manager.combat_rooms:
+            is_s = False
+            is_e = False
+
+            # 1. Проверка по физическому расположению (Координатная защита)
+            if hasattr(r, "pixel_rect") and r.pixel_rect is not None:
+                if hasattr(r.pixel_rect, "collidepoint"):
+                    if r.pixel_rect.collidepoint(spawn_pixel_x, spawn_pixel_y):
+                        is_s = True
+                    if r.pixel_rect.collidepoint(pixel_cx, pixel_cy):
+                        is_e = True
+                else:
+                    # Резервный расчет, если pixel_rect — это не Rect, а кастомный объект
+                    rx = getattr(r.pixel_rect, "x", 0)
+                    ry = getattr(r.pixel_rect, "y", 0)
+                    rw = getattr(r.pixel_rect, "width", getattr(r.pixel_rect, "w", 0))
+                    rh = getattr(r.pixel_rect, "height", getattr(r.pixel_rect, "h", 0))
+                    if rx <= spawn_pixel_x < rx + rw and ry <= spawn_pixel_y < ry + rh:
+                        is_s = True
+                    if rx <= pixel_cx < rx + rw and ry <= pixel_cy < ry + rh:
+                        is_e = True
+
+            # 2. Дополнительная проверка по текстовым свойствам (на всякий случай)
+            if hasattr(r, "is_spawn") and r.is_spawn: is_s = True
+            if hasattr(r, "is_exit") and r.is_exit: is_e = True
+            if hasattr(r, "type"):
+                if r.type == "spawn": is_s = True
+                if r.type == "exit": is_e = True
+
+            if hasattr(r, "room_data") and isinstance(r.room_data, dict):
+                if r.room_data.get("is_spawn") or r.room_data.get("type") == "spawn": is_s = True
+                if r.room_data.get("is_exit") or r.room_data.get("type") == "exit": is_e = True
+
+            if isinstance(r, dict):
+                if r.get("is_spawn") or r.get("type") == "spawn": is_s = True
+                if r.get("is_exit") or r.get("type") == "exit": is_e = True
+
+            # 3. Полностью исключаем магазины и сокровищницы из боевых комнат
+            is_safe_type = False
+            if hasattr(r, "type") and r.type in ["shop", "treasure"]: is_safe_type = True
+            if hasattr(r, "room_data") and isinstance(r.room_data, dict) and r.room_data.get("type") in ["shop", "treasure"]: is_safe_type = True
+            if isinstance(r, dict) and r.get("type") in ["shop", "treasure"]: is_safe_type = True
+
+            # Если комната не спавн, не лифт и не мирная зона — отправляем на спавн врагов
+            if not is_s and not is_e and not is_safe_type:
                 cleaned_rooms.append(r)
+                
         room_manager.combat_rooms = cleaned_rooms
 
     return (
@@ -239,7 +270,7 @@ def apply_card_stat(player_obj, card_stat_name, multiplier, revert=False):
     elif card_stat_name == "shoot_cooldown":
         player_obj.base_shoot_cooldown = player_obj.base_shoot_cooldown * actual_mult
         print(f"{action_text} {card_stat_name}: Кулдаун стрельбы стал {player_obj.base_shoot_cooldown:.1f}")
-
+        
     elif card_stat_name == "damage_taken":
         bm = player_obj.buff_manager
         d = getattr(bm, "multipliers", getattr(bm, "_multipliers", {}))
@@ -347,7 +378,7 @@ while running:
                 result = finish_menu.handle_click(event.pos)
                 if result == "quit":
                     running = False
-
+                    
             elif game_state == "dead":
                 result = death_menu.handle_click(event.pos)
                 if result == "restart":
@@ -457,7 +488,7 @@ while running:
             if room_manager.combat_rooms
             else True
         )
-
+        
         if all_combat_cleared and pygame.sprite.spritecollide(
                 player, exit_group, False
         ):
