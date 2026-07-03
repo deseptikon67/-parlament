@@ -261,7 +261,7 @@ class Wall(pygame.sprite.Sprite):
 
     _textures = {}  # кэш по размерам
 
-    def __init__(self, x, y, size=128):
+    def __init__(self, x, y, size):
         super().__init__()
 
         # если такого размера ещё нет — создаём
